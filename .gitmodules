@@ -1,0 +1,3 @@
+[submodule "vendor/koreader"]
+	path = vendor/koreader
+	url = /home/william-nobara/dev/side-projects/koreader
