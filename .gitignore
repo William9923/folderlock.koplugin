@@ -1,0 +1,15 @@
+# OS/editor
+.DS_Store
+*.swp
+*.swo
+
+# Lua/LuaJIT artifacts
+*.luac
+
+# Test/runtime temp
+tmp/
+.cache/
+
+# Local env
+.env
+.env.*
