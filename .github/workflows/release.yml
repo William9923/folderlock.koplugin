@@ -1,24 +1,17 @@
-name: Test
+name: Release
 
 on:
   push:
-  pull_request:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
 
 jobs:
-  unit:
+  release:
     runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Install Lua
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y lua5.4
-      - name: Run unit tests
-        run: make test-unit
 
-  e2e:
-    runs-on: ubuntu-latest
     steps:
       - name: Checkout (with submodules)
         uses: actions/checkout@v4
@@ -26,7 +19,7 @@ jobs:
           fetch-depth: 0
           submodules: recursive
 
-      - name: Install build dependencies
+      - name: Install dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -40,7 +33,20 @@ jobs:
             python3 \
             lua5.4 \
             libssl-dev \
-            zlib1g-dev
+            zlib1g-dev \
+            zip
+
+      - name: Run unit tests
+        run: make test-unit
 
       - name: Run end-to-end tests
         run: make test-e2e
+
+      - name: Package plugin asset
+        run: make package-release VERSION=${{ github.ref_name }}
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/folderlock.koplugin-${{ github.ref_name }}.zip
+          generate_release_notes: true

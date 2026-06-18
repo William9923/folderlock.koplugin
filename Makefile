@@ -1,12 +1,18 @@
-.PHONY: all test-unit test-e2e lint
+.PHONY: all ci test-unit test-e2e lint package-release
+
+LUA ?= lua
 
 all: test-unit test-e2e
+ci: all
 
 test-unit:
-	@echo "[placeholder] unit tests will be added in Step 3"
+	LUA="$(LUA)" sh tests/run_unit.sh
 
 test-e2e:
-	@echo "[placeholder] e2e runner will be added in Step 4"
+	sh tests/run_e2e.sh
 
 lint:
-	@echo "[placeholder] luacheck config exists; lint wiring can be refined later"
+	luacheck folderlock.koplugin tests
+
+package-release:
+	sh scripts/package_release.sh $(VERSION)

@@ -9,6 +9,7 @@
 # Test/runtime temp
 tmp/
 .cache/
+dist/
 
 # Local env
 .env
