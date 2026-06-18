@@ -23,16 +23,28 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y \
+            autoconf \
+            automake \
             bash \
             build-essential \
+            ca-certificates \
             cmake \
+            gcc-multilib \
+            gettext \
             git \
+            libtool \
+            libtool-bin \
             meson \
+            nasm \
             ninja-build \
+            patch \
+            perl \
             pkg-config \
             python3 \
             lua5.4 \
             libssl-dev \
+            unzip \
+            wget \
             zlib1g-dev \
             zip
 
