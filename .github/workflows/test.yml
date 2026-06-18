@@ -54,5 +54,26 @@ jobs:
             wget \
             zlib1g-dev
 
+      - name: Compute KOReader cache key
+        id: koreader-cache-key
+        run: |
+          echo "koreader_sha=$(cd vendor/koreader && git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore KOReader base build cache
+        id: koreader-build-cache-restore
+        uses: actions/cache/restore@v4
+        with:
+          path: vendor/koreader/base/build
+          key: ${{ runner.os }}-koreader-base-build-${{ steps.koreader-cache-key.outputs.koreader_sha }}-${{ hashFiles('.github/workflows/test.yml') }}
+          restore-keys: |
+            ${{ runner.os }}-koreader-base-build-${{ steps.koreader-cache-key.outputs.koreader_sha }}-
+
       - name: Run end-to-end tests
         run: make test-e2e
+
+      - name: Save KOReader base build cache
+        if: always() && steps.koreader-build-cache-restore.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: vendor/koreader/base/build
+          key: ${{ steps.koreader-build-cache-restore.outputs.cache-primary-key }}
