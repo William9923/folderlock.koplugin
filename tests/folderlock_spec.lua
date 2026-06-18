@@ -58,7 +58,7 @@ describe("FolderLock plugin", function()
         PluginLoader.disabled_plugins = {}
         PluginLoader.loaded_plugins = {}
 
-        load_plugin("folderlock")
+        load_plugin("folderlock.koplugin")
     end
 
     local function create_filemanager(root_path)
