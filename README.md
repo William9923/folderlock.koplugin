@@ -52,6 +52,20 @@ make test-e2e
 make lint
 ```
 
+### 4) Run KOReader with local plugin (manual verification)
+
+```bash
+# Default emulator run
+make run-koreader
+
+# Simulate device profiles in emulator
+make run-koreader SIMULATE=kindle
+make run-koreader SIMULATE=kobo-clara
+
+# Android target run (connected device/emulator via ADB)
+make run-koreader RUN_TARGET=android-arm64
+```
+
 ## Test types
 
 ### Unit tests (`make test-unit`)
