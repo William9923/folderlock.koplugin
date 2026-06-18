@@ -17,13 +17,9 @@ ASSET_NAME="folderlock.koplugin-${VERSION}.zip"
 ASSET_PATH="$OUT_DIR/$ASSET_NAME"
 
 mkdir -p "$OUT_DIR"
-TMP_DIR="$(mktemp -d)"
-trap 'rm -rf "$TMP_DIR"' EXIT INT TERM
-
-cp -a "$PWD/folderlock.koplugin" "$TMP_DIR/folderlock.koplugin"
 (
-    cd "$TMP_DIR"
-    zip -qr "$ASSET_PATH" folderlock.koplugin
+    cd "$PWD"
+    zip -qr9X "$ASSET_PATH" folderlock.koplugin
 )
 
 echo "Created: $ASSET_PATH"
