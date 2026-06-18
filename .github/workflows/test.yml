@@ -72,7 +72,7 @@ jobs:
         run: make test-e2e
 
       - name: Save KOReader base build cache
-        if: always() && steps.koreader-build-cache-restore.outputs.cache-hit != 'true'
+        if: success() && steps.koreader-build-cache-restore.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
         with:
           path: vendor/koreader/base/build
