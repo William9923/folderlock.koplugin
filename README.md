@@ -39,10 +39,21 @@ folderlock.koplugin is designed to be a privacy barrier, not a software fortress
 
 ## Usage
 
-1. Open KOReader File Manager and go to the folder you want to protect.
-2. Open the menu and choose **Folder Lock**.
-3. Set a password when prompted.
-4. Try opening the locked folder again and enter the password.
+1. Open KOReader's File Manager and navigate to the folder you want to protect.
+2. Open the menu, go to **Folder Lock** and select **Lock current folder**.
 
-<!-- Usage screenshot placeholder -->
-<!-- Example: ![Lock flow](docs/screenshots/folderlock-usage.png) -->
+   ![Folder Lock menu entrypoint](docs/screenshots/menu-entrypoint.png)
+
+3. Enter a password, then confirm it.
+
+   ![Lock button](docs/screenshots/lock-folder-btn.png)
+   ![Password entry](docs/screenshots/lock-folder-action.png)
+   ![Password confirmation](docs/screenshots/password-confirmation.png)
+
+4. Try opening the locked folder — a password prompt will appear. Enter the correct password to proceed.
+
+   ![Unlock prompt](docs/screenshots/unlock.png)
+
+5. To remove the lock permanently, go to **Folder Lock** > **Unlock current folder** and enter your current password.
+
+   ![Permanent unlock](docs/screenshots/unlock-permanent.png)
