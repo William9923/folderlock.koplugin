@@ -87,12 +87,16 @@ jobs:
 
       - name: Run end-to-end tests
         run: |
-          # cmake >=3.24 uses --fresh which forces a re-configure.
+          # cmake >=3.24 uses --fresh which forces re-configure.
           # The cached SDL3 in staging/lib can't be found at runtime
-          # by cmake's try_run unless LD_LIBRARY_PATH includes it.
-          SDL_LIB_DIR=$(ls -d vendor/koreader/base/build/*/staging/lib 2>/dev/null || true)
+          # by cmake's try_run because RPATH=$ORIGIN doesn't include
+          # the staging path. Add staging/lib to LD_LIBRARY_PATH.
+          SDL_LIB_DIR=$(find vendor/koreader/base/build -type d -name lib -path "*/staging/lib" 2>/dev/null | head -1)
           if [ -n "$SDL_LIB_DIR" ]; then
+            echo "Adding to LD_LIBRARY_PATH: $SDL_LIB_DIR"
             export LD_LIBRARY_PATH="$SDL_LIB_DIR:${LD_LIBRARY_PATH:-}"
+          else
+            echo "No staging/lib found, SDL3 will be built from source"
           fi
           make test-e2e
 
