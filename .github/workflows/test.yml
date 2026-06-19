@@ -86,7 +86,15 @@ jobs:
             ${{ runner.os }}-koreader-base-build-${{ steps.koreader-cache-key.outputs.koreader_sha }}-
 
       - name: Run end-to-end tests
-        run: make test-e2e
+        run: |
+          # cmake >=3.24 uses --fresh which forces a re-configure.
+          # The cached SDL3 in staging/lib can't be found at runtime
+          # by cmake's try_run unless LD_LIBRARY_PATH includes it.
+          SDL_LIB_DIR=$(ls -d vendor/koreader/base/build/*/staging/lib 2>/dev/null || true)
+          if [ -n "$SDL_LIB_DIR" ]; then
+            export LD_LIBRARY_PATH="$SDL_LIB_DIR:${LD_LIBRARY_PATH:-}"
+          fi
+          make test-e2e
 
       - name: Save KOReader base build cache
         if: success() && steps.koreader-build-cache-restore.outputs.cache-hit != 'true'
