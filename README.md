@@ -6,10 +6,9 @@
 
 ## Demo / Screenshot
 
-<!-- Screenshot placeholder: add image manually -->
-<!-- Example: ![FolderLock demo](docs/screenshots/folderlock-demo.png) -->
+![Folder Lock menu entrypoint](docs/screenshots/menu-entrypoint.png)
 
-TODO
+*Screenshots of the full workflow are in the [Usage](#usage) section below.*
 
 ## Philosophy & Scope
 
@@ -59,3 +58,17 @@ folderlock.koplugin is designed to be a privacy barrier, not a software fortress
 5. To remove the lock permanently, go to **Folder Lock** > **Unlock current folder** and enter your current password.
 
    ![Permanent unlock](docs/screenshots/unlock-permanent.png)
+
+## Upcoming Features
+
+These capabilities are planned for future releases:
+
+**Automatic Updater** — One-tap update button inside KOReader so users stay current without manual reinstalls. The changelog is shown automatically before applying updates.
+
+**File-Based Lock** — Prevents access to locked files through History, Recent, or Favorites entries. A locked placeholder image or cover is shown until the folder is unlocked.
+
+**Cover Cache Isolation** — Prevents other plugins from caching cover images or metadata from locked folders, eliminating information leaks.
+
+## License
+
+This project is licensed under the GNU Affero General Public License v3.0. See the [LICENSE](LICENSE) file for details.
