@@ -30,11 +30,13 @@ folderlock.koplugin is designed to be a privacy barrier, not a software fortress
 - Password prompt when opening locked folders
 - Parent locks cascade to subfolders automatically
 
-## Installation Guide (WIP)
+## Installation
 
-1. Download the latest `folderlock.koplugin` release package.
+> 📝 **Draft** — review welcome. Let me know if anything should change.
+
+1. Download the latest `folderlock.koplugin-*.zip` from the [Releases](https://github.com/williambnobara/folderlock.koplugin/releases) page.
 2. Extract the archive.
-3. Copy `folderlock.koplugin/` into your KOReader `plugins/` directory.
+3. Copy the `folderlock.koplugin/` folder into your KOReader `plugins/` directory.
 4. Restart KOReader.
 
 ## Usage
