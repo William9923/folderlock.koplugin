@@ -91,7 +91,9 @@ jobs:
           # The cached SDL3 in staging/lib can't be found at runtime
           # by cmake's try_run because RPATH=$ORIGIN doesn't include
           # the staging path. Add staging/lib to LD_LIBRARY_PATH.
-          SDL_LIB_DIR=$(find vendor/koreader/base/build -type d -name lib -path "*/staging/lib" 2>/dev/null | head -1)
+          # NOTE: must use absolute path since LD_LIBRARY_PATH is
+          # resolved relative to the test binary's CWD, not the shell.
+          SDL_LIB_DIR=$(find "$PWD/vendor/koreader/base/build" -type d -name lib -path "*/staging/lib" 2>/dev/null | head -1)
           if [ -n "$SDL_LIB_DIR" ]; then
             echo "Adding to LD_LIBRARY_PATH: $SDL_LIB_DIR"
             export LD_LIBRARY_PATH="$SDL_LIB_DIR:${LD_LIBRARY_PATH:-}"
