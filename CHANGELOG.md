@@ -47,4 +47,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Set `LD_LIBRARY_PATH` for cmake SDL3 try_run in CI
 
-[0.1.0]: https://github.com/williambnobara/folderlock.koplugin/releases/tag/0.1.0
+[0.1.0]: https://github.com/William9923/folderlock.koplugin/releases/tag/0.1.0
