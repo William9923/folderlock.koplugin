@@ -5,6 +5,7 @@ Plugin to password-protect folders via a lock registry.
 --
 
 local FolderLockCore = require("lib/folderlock_core")
+local FolderLockUpdater = require("lib/folderlock_updater")
 local InfoMessage = require("ui/widget/infomessage")
 local InputDialog = require("ui/widget/inputdialog")
 local UIManager = require("ui/uimanager")
@@ -106,6 +107,7 @@ local FolderLock = WidgetContainer:extend({
 
 function FolderLock:init()
     FolderLockCore.load_registry()
+    FolderLockUpdater.recover_or_cleanup()
 
     if self.ui and self.ui.menu then
         self.ui.menu:registerToMainMenu(self)
