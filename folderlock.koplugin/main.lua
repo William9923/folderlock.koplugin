@@ -6,7 +6,9 @@ Plugin to password-protect folders via a lock registry.
 
 local FolderLockCore = require("lib/folderlock_core")
 local FolderLockUpdater = require("lib/folderlock_updater")
+local ConfirmBox = require("ui/widget/confirmbox")
 local InfoMessage = require("ui/widget/infomessage")
+local Trapper = require("ui/trapper")
 local InputDialog = require("ui/widget/inputdialog")
 local UIManager = require("ui/uimanager")
 local WidgetContainer = require("ui/widget/container/widgetcontainer")
@@ -306,7 +308,47 @@ function FolderLock:addToMainMenu(menu_items)
                     unlock_dialog:onShowKeyboard()
                 end,
             },
-
+            {
+                text = _("Check for updates"),
+                callback = function()
+                    UIManager:show(ConfirmBox:new({
+                        text = _("Check for Folder Lock updates?"),
+                        ok_text = _("Check"),
+                        ok_callback = function()
+                            Trapper:wrap(function()
+                                local result, err = FolderLockUpdater.check()
+                                if not result then
+                                    UIManager:show(InfoMessage:new({
+                                        text = _("Update check failed: ") .. err,
+                                    }))
+                                    return
+                                end
+                                if not result.available then
+                                    UIManager:show(InfoMessage:new({
+                                        text = _("You're running the latest version (") .. result.current_version .. _(")."),
+                                        timeout = 3,
+                                    }))
+                                    return
+                                end
+                                UIManager:show(ConfirmBox:new({
+                                    text = _("Update ") .. result.latest_version .. _(" is available. Install?"),
+                                    ok_text = _("Install"),
+                                    ok_callback = function()
+                                        local install_ok, install_err = FolderLockUpdater.install(result.latest_version)
+                                        if install_err then
+                                            UIManager:show(InfoMessage:new({
+                                                text = _("Install failed: ") .. install_err,
+                                            }))
+                                            return
+                                        end
+                                        UIManager:askForRestart(_("Update installed. Please restart KOReader."))
+                                    end,
+                                }))
+                            end)
+                        end,
+                    }))
+                end,
+            },
         },
     }
 end
