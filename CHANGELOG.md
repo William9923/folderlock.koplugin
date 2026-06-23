@@ -5,7 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Auto-update system** — check for and install new versions directly from inside KOReader via **Folder Lock → Check for updates**
+  - Fetches latest release metadata from GitHub Releases API
+  - Downloads release zip and verifies SHA-256 checksum before touching the live plugin
+  - Safe swap with rollback: renames live plugin → `.bak`, extracts new version in its place, restores `.bak` on any failure
+  - Startup recovery: cleans up stale `.bak` after a successful boot, restores `.bak` if the live plugin is missing
+  - Override URL for testing with a local dummy server
+- **Runtime version source** — `folderlock.koplugin/lib/folderlock_version.lua` embedded at package time so the updater knows what's installed
+- **Checksum sidecar in releases** — `folderlock.koplugin-<version>.zip.sha256` is now published alongside each release zip
+
+### Changed
+
+- **Code convention**: all KOReader module requires are scoped inside the functions that use them (lazy require), keeping the module loadable in test environments without the full KOReader runtime
+- `scripts/package_release.sh` now injects the release version into the packaged plugin and generates the `.sha256` checksum file
+
 ## [0.1.0] - 2026-06-19
+
+### Added
 
 ### Added
 

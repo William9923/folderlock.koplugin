@@ -28,6 +28,7 @@ folderlock.koplugin is designed to be a privacy barrier, not a software fortress
 - Unlock a folder from the same menu
 - Password prompt when opening locked folders
 - Parent locks cascade to subfolders automatically
+- **Auto-update** — check for and install new versions from inside KOReader (**Folder Lock → Check for updates**)
 
 ## Installation
 
@@ -37,6 +38,14 @@ folderlock.koplugin is designed to be a privacy barrier, not a software fortress
 2. Extract the archive.
 3. Copy the `folderlock.koplugin/` folder into your KOReader `plugins/` directory.
 4. Restart KOReader.
+
+### Updating
+
+Once installed, you can update from inside KOReader:
+
+1. Open the menu → **Folder Lock** → **Check for updates**.
+2. If a new version is available, confirm the install.
+3. Restart KOReader when prompted.
 
 ## Usage
 
@@ -62,8 +71,6 @@ folderlock.koplugin is designed to be a privacy barrier, not a software fortress
 ## Upcoming Features
 
 These capabilities are planned for future releases:
-
-**Automatic Updater** — One-tap update button inside KOReader so users stay current without manual reinstalls. The changelog is shown automatically before applying updates.
 
 **File-Based Lock** — Prevents access to locked files through History, Recent, or Favorites entries. A locked placeholder image or cover is shown until the folder is unlocked.
 
