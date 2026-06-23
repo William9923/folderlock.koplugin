@@ -107,6 +107,7 @@ local FolderLock = WidgetContainer:extend({
 
 function FolderLock:init()
     FolderLockCore.load_registry()
+    FolderLockUpdater.set_plugin_dir(self.path)
     FolderLockUpdater.recover_or_cleanup()
 
     if self.ui and self.ui.menu then

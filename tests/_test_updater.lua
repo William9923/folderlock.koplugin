@@ -121,10 +121,7 @@ t.test("updater exposes version and default release URL", function()
 	local updater = make_updater("1.2.3")
 
 	eq(updater.get_current_version(), "1.2.3")
-	eq(
-		updater.get_latest_release_url(),
-		"https://api.github.com/repos/William9923/folderlock.koplugin/releases/latest"
-	)
+	eq(updater.get_latest_release_url(), "https://api.github.com/repos/William9923/folderlock.koplugin/releases/latest")
 end)
 
 t.test("updater allows temporary latest-release URL override", function()
@@ -527,7 +524,11 @@ local function install_deps(download_ok, download_data, expected_hash)
 	}
 
 	local deps = {
-		["ui/network/manager"] = { isConnected = function() return true end },
+		["ui/network/manager"] = {
+			isConnected = function()
+				return true
+			end,
+		},
 		["socket.http"] = http_stub,
 		["ltn12"] = {
 			sink = {
@@ -588,7 +589,8 @@ end)
 
 t.test("install fails when checksum does not match", function()
 	-- download_ok = true, download_data = the zip content, expected_hash is different
-	local cleanup = install_deps(true, "real-zip-bytes", "0000111122223333444455556666777788889999aaaabbbbccccddddeeeeffff")
+	local cleanup =
+		install_deps(true, "real-zip-bytes", "0000111122223333444455556666777788889999aaaabbbbccccddddeeeeffff")
 	local updater = make_updater("dev")
 	local result, err = updater.install("1.0.0", "http://example.com/test.zip", "http://example.com/test.zip.sha256")
 	eq(result, nil)
@@ -596,29 +598,234 @@ t.test("install fails when checksum does not match", function()
 	cleanup()
 end)
 
-t.test("install returns TODO after successful download+verify", function()
-	-- download ok, expected_hash must match the hash of "fake-zip-content" (see stub)
-	local cleanup = install_deps(true, "fake-zip-content",
-		"a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2")
-	local updater = make_updater("dev")
-	local result, err = updater.install("1.0.0", "http://example.com/test.zip", "http://example.com/test.zip.sha256")
-	eq(result, nil)
-	eq(err, "update install not implemented yet")
-	cleanup()
-end)
+-- Stub lfs.attributes globally (KOReader has it as a global).
+-- In test environment it may not exist, so we create a shim.
+if not lfs then
+	_G.lfs = {
+		attributes = function()
+			return "directory"
+		end,
+	}
+end
+local _lfs_attr = lfs.attributes
 
-t.test("install succeeds (without checksum) then hits TODO", function()
+local function install_deps_full(download_ok, download_data, expected_hash, fail_step)
+	local cleanup1 = install_deps(download_ok, download_data, expected_hash)
+
+	local saved_rename = os.rename
+
+	lfs.attributes = function(path)
+		if path:match("%.new$") or path:match("%.bak$") then
+			return nil
+		end
+		return _lfs_attr(path)
+	end
+
+	os.rename = function(old, new)
+		if fail_step == "bak" and old:match("%.bak$") then
+			return nil, "rename failed (bak)"
+		end
+		if fail_step == "new" and old:match("%.new$") then
+			return nil, "rename failed (new)"
+		end
+		return true
+	end
+
+	local deps = {
+		["libs/libkoreader-lfs"] = { attributes = lfs.attributes },
+		["device"] = {
+			unpackArchive = function(_, _archive, _extract_to, _strip)
+				if fail_step == "extract" then
+					return nil, "extraction error"
+				end
+				return true
+			end,
+		},
+		["ffi/util"] = {
+			purgeDir = function() end,
+		},
+		["util"] = {
+			makePath = function()
+				return true
+			end,
+		},
+		["logger"] = { dbg = function() end, warn = function() end },
+	}
+
+	local cleanup2 = stub_updater_deps(deps)
+
+	return function()
+		cleanup2()
+		lfs.attributes = _lfs_attr
+		os.rename = saved_rename
+		cleanup1()
+	end
+end
+
+t.test("install fails when no plugin_dir is set", function()
 	local cleanup = install_deps(true, "some-data", nil)
 	local updater = make_updater("dev")
 	local result, err = updater.install("1.0.0", "http://example.com/test.zip", nil)
 	eq(result, nil)
-	eq(err, "update install not implemented yet")
+	eq(err, "Plugin directory not set")
 	cleanup()
 end)
 
-t.test("recover_or_cleanup returns true", function()
+t.test("install fails on extraction error", function()
+	local cleanup = install_deps_full(true, "some-data", nil, "extract")
 	local updater = make_updater("dev")
-	eq(updater.recover_or_cleanup(), true)
+	updater.set_plugin_dir("/tmp/plugins/folderlock.koplugin")
+	local result, err = updater.install("1.0.0", "http://example.com/test.zip", nil)
+	eq(result, nil)
+	eq(err:match("Extraction failed"), "Extraction failed")
+	cleanup()
+end)
+
+t.test("install succeeds with checksum verification", function()
+	local cleanup =
+		install_deps_full(true, "fake-zip-content", "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2")
+	local updater = make_updater("dev")
+	updater.set_plugin_dir("/tmp/plugins/folderlock.koplugin")
+	local result, err = updater.install("1.0.0", "http://example.com/test.zip", "http://example.com/test.zip.sha256")
+	eq(err, nil)
+	eq(result, true)
+	cleanup()
+end)
+
+t.test("install succeeds without checksum", function()
+	local cleanup = install_deps_full(true, "some-data", nil)
+	local updater = make_updater("dev")
+	updater.set_plugin_dir("/tmp/plugins/folderlock.koplugin")
+	local result, err = updater.install("1.0.0", "http://example.com/test.zip", nil)
+	eq(err, nil)
+	eq(result, true)
+	cleanup()
+end)
+
+t.test("install rolls back when .new→live rename fails", function()
+	local cleanup = install_deps_full(true, "some-data", nil, "new")
+	local updater = make_updater("dev")
+	updater.set_plugin_dir("/tmp/plugins/folderlock.koplugin")
+	local result, err = updater.install("1.0.0", "http://example.com/test.zip", nil)
+	eq(result, nil)
+	eq(err:match("Failed to install update"), "Failed to install update")
+	cleanup()
+end)
+
+t.test("recover_or_cleanup removes stale .new", function()
+	local saved_attr = lfs.attributes
+	local purged = {}
+	lfs.attributes = function(path)
+		if path:match("%.new$") then
+			return "directory"
+		end
+		if path:match("%.bak$") then
+			return nil
+		end
+		return "directory"
+	end
+
+	local cleanup = stub_updater_deps({
+		["libs/libkoreader-lfs"] = { attributes = lfs.attributes },
+		["ffi/util"] = {
+			purgeDir = function(p)
+				table.insert(purged, p)
+			end,
+		},
+		["logger"] = { dbg = function() end },
+	})
+	local updater = make_updater("dev")
+	updater.set_plugin_dir("/tmp/plugins/folderlock.koplugin")
+	local ok, err = updater.recover_or_cleanup()
+	eq(ok, true)
+	local found_new = false
+	for _, p in ipairs(purged) do
+		if p:match("%.new$") then
+			found_new = true
+		end
+	end
+	eq(found_new, true)
+
+	lfs.attributes = saved_attr
+	cleanup()
+end)
+
+t.test("recover_or_cleanup removes .bak when both live and .bak exist", function()
+	local saved_attr = lfs.attributes
+	local purged = {}
+	lfs.attributes = function(path)
+		if path:match("%.bak$") then
+			return "directory"
+		end
+		if path:match("%.new$") then
+			return nil
+		end
+		return "directory"
+	end
+
+	local cleanup = stub_updater_deps({
+		["libs/libkoreader-lfs"] = { attributes = lfs.attributes },
+		["ffi/util"] = {
+			purgeDir = function(p)
+				table.insert(purged, p)
+			end,
+		},
+		["logger"] = { dbg = function() end },
+	})
+	local updater = make_updater("dev")
+	updater.set_plugin_dir("/tmp/plugins/folderlock.koplugin")
+	local ok, err = updater.recover_or_cleanup()
+	eq(ok, true)
+	local found_bak = false
+	for _, p in ipairs(purged) do
+		if p:match("%.bak$") then
+			found_bak = true
+		end
+	end
+	eq(found_bak, true)
+
+	lfs.attributes = saved_attr
+	cleanup()
+end)
+
+t.test("recover_or_cleanup restores .bak when live missing", function()
+	local saved_attr = lfs.attributes
+	local saved_rename = os.rename
+	local renamed = {}
+	lfs.attributes = function(path)
+		if path:match("%.bak$") then
+			return "directory"
+		end
+		if path:match("%.new$") then
+			return nil
+		end
+		return nil
+	end
+	os.rename = function(old, new)
+		table.insert(renamed, { old = old, new = new })
+		return true
+	end
+
+	local cleanup = stub_updater_deps({
+		["libs/libkoreader-lfs"] = { attributes = lfs.attributes },
+		["ffi/util"] = { purgeDir = function() end },
+		["logger"] = { dbg = function() end },
+	})
+	local updater = make_updater("dev")
+	updater.set_plugin_dir("/tmp/plugins/folderlock.koplugin")
+	local ok, err = updater.recover_or_cleanup()
+	eq(ok, true)
+	local found_restore = false
+	for _, r in ipairs(renamed) do
+		if r.old:match("%.bak$") and not r.new:match("%.bak$") then
+			found_restore = true
+		end
+	end
+	eq(found_restore, true)
+
+	lfs.attributes = saved_attr
+	os.rename = saved_rename
+	cleanup()
 end)
 
 t.done()

@@ -14,6 +14,10 @@ function FolderLockUpdater.get_current_version()
 	return FolderLockVersion.VERSION or "dev"
 end
 
+function FolderLockUpdater.set_plugin_dir(dir)
+	FolderLockUpdater._plugin_dir = dir
+end
+
 function FolderLockUpdater.set_latest_release_url(url)
 	FolderLockUpdater._latest_release_url_override = url
 end
@@ -244,13 +248,100 @@ function FolderLockUpdater.install(version, zip_url, sha256_url)
 		os.remove(tmp_sha)
 	end
 
-	-- TODO: Step 6 — extract zip and swap plugin directory
-	logger.dbg("FolderLock: download complete, zip at", tmp)
+	logger.dbg("FolderLock: checksum verified, extracting update")
+
+	local plugin_dir = FolderLockUpdater._plugin_dir
+	if not plugin_dir then
+		os.remove(tmp)
+		return nil, "Plugin directory not set"
+	end
+
+	local ffiUtil = require("ffi/util")
+	local util = require("util")
+	local Device = require("device")
+
+	local plugin_dir_new = plugin_dir .. ".new"
+	local plugin_dir_bak = plugin_dir .. ".bak"
+
+	local lfs = require("libs/libkoreader-lfs")
+
+	-- Clean up any stale .new from a previous aborted install
+	local attr_new = lfs.attributes(plugin_dir_new)
+	if attr_new then
+		ffiUtil.purgeDir(plugin_dir_new)
+	end
+
+	-- Create fresh extract target
+	util.makePath(plugin_dir_new)
+
+	-- Extract zip into .new directory (strip root folder)
+	local extract_ok, extract_err = Device:unpackArchive(tmp, plugin_dir_new, true)
 	os.remove(tmp)
-	return nil, "update install not implemented yet"
+	if not extract_ok then
+		ffiUtil.purgeDir(plugin_dir_new)
+		return nil, "Extraction failed: " .. tostring(extract_err)
+	end
+
+	-- Remove existing .bak from a previous successful install
+	local attr_bak = lfs.attributes(plugin_dir_bak)
+	if attr_bak then
+		ffiUtil.purgeDir(plugin_dir_bak)
+	end
+
+	-- Swap: live → .bak
+	local rename_ok, rename_err = os.rename(plugin_dir, plugin_dir_bak)
+	if not rename_ok then
+		ffiUtil.purgeDir(plugin_dir_new)
+		return nil, "Failed to back up current plugin: " .. tostring(rename_err)
+	end
+
+	-- Swap: .new → live
+	local swap_ok, swap_err = os.rename(plugin_dir_new, plugin_dir)
+	if not swap_ok then
+		-- Rollback: restore .bak → live
+		os.rename(plugin_dir_bak, plugin_dir)
+		ffiUtil.purgeDir(plugin_dir_new)
+		return nil, "Failed to install update: " .. tostring(swap_err)
+	end
+
+	logger.dbg("FolderLock: update installed successfully")
+	return true
 end
 
 function FolderLockUpdater.recover_or_cleanup()
+	local plugin_dir = FolderLockUpdater._plugin_dir
+	if not plugin_dir then
+		return true
+	end
+
+	local lfs = require("libs/libkoreader-lfs")
+	local ffiUtil = require("ffi/util")
+	local plugin_dir_bak = plugin_dir .. ".bak"
+	local plugin_dir_new = plugin_dir .. ".new"
+
+	local attr_live = lfs.attributes(plugin_dir)
+	local attr_bak = lfs.attributes(plugin_dir_bak)
+	local attr_new = lfs.attributes(plugin_dir_new)
+
+	-- Stale .new from an aborted pre-swap install: delete it
+	if attr_new then
+		ffiUtil.purgeDir(plugin_dir_new)
+	end
+
+	-- .bak exists alongside live: install completed successfully, safe to clean up
+	if attr_live and attr_bak then
+		ffiUtil.purgeDir(plugin_dir_bak)
+		return true
+	end
+
+	-- .bak exists but no live: previous install was rolled back or interrupted mid-swap
+	if not attr_live and attr_bak then
+		local ok, err = os.rename(plugin_dir_bak, plugin_dir)
+		if not ok then
+			return nil, err
+		end
+	end
+
 	return true
 end
 
