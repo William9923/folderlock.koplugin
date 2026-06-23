@@ -66,12 +66,14 @@ jobs:
 
       - name: Setup Lua
         uses: leafo/gh-actions-lua@v13
+        with:
+          luaVersion: "5.4"
       - name: Install LuaRocks
         run: |
           sudo apt-get update
           sudo apt-get install -y luarocks
       - name: Install dkjson
-        run: sudo luarocks install dkjson
+        run: sudo luarocks --lua=$(which lua) install dkjson
 
       - name: Run unit tests
         run: make test-unit
