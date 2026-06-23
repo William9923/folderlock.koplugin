@@ -420,11 +420,200 @@ t.test("compare_versions: handles different segment lengths", function()
 	eq(u.compare_versions("1.0.0.1", "1.0.0"), 1)
 end)
 
-t.test("install returns not-implemented", function()
+-- ============================================================
+-- install() tests
+-- ============================================================
+
+-- Save/restore globals so tests don't leak stubs
+local function install_deps(download_ok, download_data, expected_hash)
+	local saved = {
+		os_tmpname = os.tmpname,
+		os_remove = os.remove,
+		io_open = io.open,
+	}
+
+	local tmp_idx = 0
+	os.tmpname = function()
+		tmp_idx = tmp_idx + 1
+		return "/tmp/folderlock-install-test-" .. tmp_idx
+	end
+	os.remove = function() end
+
+	-- Stub io.open: track files written so reads return the same content.
+	-- Since ltn12.sink.file never explicitly closes, we save on each write call.
+	local written_files = {}
+	io.open = function(path, mode)
+		if mode == "wb" then
+			local data = ""
+			return {
+				write = function(_, chunk)
+					if chunk then
+						data = data .. chunk
+						written_files[path] = data
+					end
+					return true
+				end,
+				close = function() end,
+			}
+		elseif mode == "r" then
+			local data = written_files[path]
+			-- If the file wasn't written yet, provide test data based on role
+			if not data then
+				-- The sha256 file: provide a checksum line
+				if expected_hash then
+					data = expected_hash .. "  folderlock.koplugin-test.zip\n"
+				else
+					data = download_data or "fake-zip-content"
+				end
+			end
+			if not data then
+				return nil, "no such file"
+			end
+			return {
+				read = function(_, fmt)
+					if fmt == "*all" or fmt == "*a" then
+						local r = data
+						data = ""
+						return r
+					elseif fmt == "*l" then
+						local nl = data:find("\n")
+						if nl then
+							local r = data:sub(1, nl - 1)
+							data = data:sub(nl + 1)
+							return r
+						end
+						r = data
+						data = ""
+						return #r > 0 and r or nil
+					end
+					return nil
+				end,
+				close = function() end,
+			}
+		elseif mode == "rb" then
+			-- Used by file_sha256: read the already-written zip content
+			local data = written_files[path] or download_data or "fake-zip-content"
+			return {
+				read = function(_, fmt)
+					if fmt == "*all" or fmt == "*a" then
+						local r = data
+						data = ""
+						return r
+					end
+					return nil
+				end,
+				close = function() end,
+			}
+		end
+		return nil, "unsupported mode: " .. tostring(mode)
+	end
+
+	-- Stub http.request for download
+	local http_stub = {
+		request = function(req)
+			if not download_ok then
+				return 1, 404, "Not Found"
+			end
+			local sink = req.sink
+			local url = req.url or ""
+			if url:match("%.sha256$") and expected_hash then
+				-- Feed the checksum file content
+				sink(expected_hash .. "  folderlock.koplugin-test.zip\n")
+			else
+				sink(download_data or "fake-zip-bytes")
+			end
+			return 1, 200, {}
+		end,
+	}
+
+	local deps = {
+		["ui/network/manager"] = { isConnected = function() return true end },
+		["socket.http"] = http_stub,
+		["ltn12"] = {
+			sink = {
+				file = function(handle)
+					return function(chunk)
+						if chunk then
+							handle:write(chunk)
+						end
+					end
+				end,
+			},
+		},
+		["socket"] = {
+			skip = function(n, ...)
+				local args = table.pack(...)
+				return table.unpack(args, n + 1, args.n)
+			end,
+		},
+		["socketutil"] = {
+			set_timeout = function() end,
+			reset_timeout = function() end,
+			FILE_BLOCK_TIMEOUT = 30,
+			FILE_TOTAL_TIMEOUT = 120,
+		},
+		["logger"] = { dbg = function() end, warn = function() end },
+		["ffi/sha2"] = {
+			sha256 = function(s)
+				-- Return a predictable hash based on content
+				if not download_data and not s then
+					return "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+				end
+				if s and s == "fake-zip-content" then
+					return "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2"
+				end
+				return ("hash-of-%s"):format(tostring(s)):sub(1, 64)
+			end,
+		},
+	}
+
+	local restore = stub_updater_deps(deps)
+
+	return function()
+		restore()
+		os.tmpname = saved.os_tmpname
+		os.remove = saved.os_remove
+		io.open = saved.io_open
+	end
+end
+
+t.test("install fails with download error when HTTP fails", function()
+	local cleanup = install_deps(false, nil)
 	local updater = make_updater("dev")
-	local result, err = updater.install("1.2.3")
+	local result, err = updater.install("1.0.0", "http://example.com/test.zip", nil)
+	eq(result, nil)
+	eq(err, "Download failed (HTTP 404)")
+	cleanup()
+end)
+
+t.test("install fails when checksum does not match", function()
+	-- download_ok = true, download_data = the zip content, expected_hash is different
+	local cleanup = install_deps(true, "real-zip-bytes", "0000111122223333444455556666777788889999aaaabbbbccccddddeeeeffff")
+	local updater = make_updater("dev")
+	local result, err = updater.install("1.0.0", "http://example.com/test.zip", "http://example.com/test.zip.sha256")
+	eq(result, nil)
+	eq(err:match("Checksum mismatch"), "Checksum mismatch")
+	cleanup()
+end)
+
+t.test("install returns TODO after successful download+verify", function()
+	-- download ok, expected_hash must match the hash of "fake-zip-content" (see stub)
+	local cleanup = install_deps(true, "fake-zip-content",
+		"a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2")
+	local updater = make_updater("dev")
+	local result, err = updater.install("1.0.0", "http://example.com/test.zip", "http://example.com/test.zip.sha256")
 	eq(result, nil)
 	eq(err, "update install not implemented yet")
+	cleanup()
+end)
+
+t.test("install succeeds (without checksum) then hits TODO", function()
+	local cleanup = install_deps(true, "some-data", nil)
+	local updater = make_updater("dev")
+	local result, err = updater.install("1.0.0", "http://example.com/test.zip", nil)
+	eq(result, nil)
+	eq(err, "update install not implemented yet")
+	cleanup()
 end)
 
 t.test("recover_or_cleanup returns true", function()

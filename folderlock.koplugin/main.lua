@@ -334,7 +334,7 @@ function FolderLock:addToMainMenu(menu_items)
                                     text = _("Update ") .. result.latest_version .. _(" is available. Install?"),
                                     ok_text = _("Install"),
                                     ok_callback = function()
-                                        local install_ok, install_err = FolderLockUpdater.install(result.latest_version)
+                                        local install_ok, install_err = FolderLockUpdater.install(result.latest_version, result.zip_url, result.sha256_url)
                                         if install_err then
                                             UIManager:show(InfoMessage:new({
                                                 text = _("Install failed: ") .. install_err,

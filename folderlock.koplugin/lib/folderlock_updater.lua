@@ -150,7 +150,103 @@ function FolderLockUpdater.check()
 	}
 end
 
-function FolderLockUpdater.install(_version)
+-- Download a file from url to dest_path. Returns true on success, nil+err on failure.
+local function download_file(url, dest_path)
+	local http = require("socket.http")
+	local ltn12 = require("ltn12")
+	local socket = require("socket")
+	local socketutil = require("socketutil")
+	local logger = require("logger")
+
+	socketutil:set_timeout(socketutil.FILE_BLOCK_TIMEOUT, socketutil.FILE_TOTAL_TIMEOUT)
+	local code, _, _ = socket.skip(
+		1,
+		http.request({
+			url = url,
+			sink = ltn12.sink.file(io.open(dest_path, "wb")),
+			headers = {
+				["User-Agent"] = USER_AGENT,
+			},
+		})
+	)
+	socketutil:reset_timeout()
+
+	if code ~= 200 then
+		logger.dbg("FolderLock: download failed, url=" .. url .. ", code=" .. tostring(code))
+		os.remove(dest_path)
+		return nil, "Download failed (HTTP " .. tostring(code) .. ")"
+	end
+	return true
+end
+
+-- Compute SHA256 hex digest of a file.
+local function file_sha256(filepath)
+	local sha2 = require("ffi/sha2")
+	local file, err = io.open(filepath, "rb")
+	if not file then
+		return nil, err
+	end
+	local content = file:read("*all")
+	file:close()
+	return sha2.sha256(content)
+end
+
+function FolderLockUpdater.install(version, zip_url, sha256_url)
+	local logger = require("logger")
+	local tmp = os.tmpname()
+	local tmp_sha
+	local ok, err
+
+	logger.dbg("FolderLock: downloading update zip from", zip_url)
+	ok, err = download_file(zip_url, tmp)
+	if not ok then
+		return nil, err
+	end
+
+	if sha256_url then
+		tmp_sha = os.tmpname()
+		ok, err = download_file(sha256_url, tmp_sha)
+		if not ok then
+			os.remove(tmp)
+			return nil, err
+		end
+
+		local sha_file, sha_err = io.open(tmp_sha, "r")
+		if not sha_file then
+			os.remove(tmp)
+			os.remove(tmp_sha)
+			return nil, "Failed to read checksum file: " .. tostring(sha_err)
+		end
+		local sha_line = sha_file:read("*l")
+		sha_file:close()
+
+		local expected_hash = sha_line:match("^(%x+)%s")
+		if not expected_hash then
+			os.remove(tmp)
+			os.remove(tmp_sha)
+			return nil, "Could not parse checksum from .sha256 file"
+		end
+
+		local computed_hash, hash_err = file_sha256(tmp)
+		if not computed_hash then
+			os.remove(tmp)
+			os.remove(tmp_sha)
+			return nil, "Failed to compute SHA256: " .. tostring(hash_err)
+		end
+
+		if computed_hash ~= expected_hash then
+			os.remove(tmp)
+			os.remove(tmp_sha)
+			return nil, "Checksum mismatch: expected " .. expected_hash .. ", got " .. computed_hash
+		end
+
+		logger.dbg("FolderLock: checksum verified OK")
+		os.remove(tmp_sha)
+	end
+
+	-- TODO: Step 6 — extract zip and swap plugin directory
+	logger.dbg("FolderLock: download complete, zip at", tmp)
+	os.remove(tmp)
 	return nil, "update install not implemented yet"
 end
 
