@@ -312,6 +312,19 @@ function FolderLock:addToMainMenu(menu_items)
                 end,
             },
             {
+                text_func = function()
+                    return _("Version: ") .. FolderLockUpdater.get_current_version()
+                end,
+                callback = function()
+                    local UIManager = require("ui/uimanager")
+                    local InfoMessage = require("ui/widget/infomessage")
+                    UIManager:show(InfoMessage:new({
+                        text = _("Folder Lock ") .. FolderLockUpdater.get_current_version(),
+                        timeout = 3,
+                    }))
+                end,
+            },
+            {
                 text = _("Check for updates"),
                 callback = function()
                     local UIManager = require("ui/uimanager")
