@@ -71,7 +71,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y luarocks
       - name: Install dkjson
-        run: luarocks install dkjson
+        run: sudo luarocks install dkjson
 
       - name: Run unit tests
         run: make test-unit
