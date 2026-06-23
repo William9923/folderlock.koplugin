@@ -16,7 +16,7 @@ jobs:
           sudo apt-get install -y lua5.4 luarocks
           sudo luarocks install dkjson
       - name: Run unit tests
-        run: make test-unit
+        run: LUA=lua5.4 make test-unit
 
   e2e:
     runs-on: ubuntu-latest

@@ -70,7 +70,7 @@ jobs:
         run: sudo luarocks install dkjson
 
       - name: Run unit tests
-        run: make test-unit
+        run: LUA=lua5.4 make test-unit
 
       - name: Run end-to-end tests
         run: make test-e2e
