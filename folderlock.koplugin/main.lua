@@ -6,11 +6,6 @@ Plugin to password-protect folders via a lock registry.
 
 local FolderLockCore = require("lib/folderlock_core")
 local FolderLockUpdater = require("lib/folderlock_updater")
-local ConfirmBox = require("ui/widget/confirmbox")
-local InfoMessage = require("ui/widget/infomessage")
-local Trapper = require("ui/trapper")
-local InputDialog = require("ui/widget/inputdialog")
-local UIManager = require("ui/uimanager")
 local WidgetContainer = require("ui/widget/container/widgetcontainer")
 local _ = require("gettext")
 
@@ -27,12 +22,15 @@ local function ensure_filechooser_patch()
         return
     end
 
+    local UIManager = require("ui/uimanager")
+    local InfoMessage = require("ui/widget/infomessage")
+    local InputDialog = require("ui/widget/inputdialog")
+
     _orig_FileChooser_changeToPath = FileChooser.changeToPath
 
     FileChooser.changeToPath = function(self_fc, path, focused_path)
         local chooser_name = self_fc and self_fc.name or "nil"
 
-        -- Only guard FileManager navigation.
         if chooser_name ~= "filemanager" then
             return _orig_FileChooser_changeToPath(self_fc, path, focused_path)
         end
@@ -115,13 +113,11 @@ function FolderLock:init()
         self.ui.menu:registerToMainMenu(self)
     end
 
-    -- Install one class-level patch for all FileChooser instances.
     ensure_filechooser_patch()
 end
 
 local function get_current_folder(self)
-    local path = self.ui and self.ui.file_chooser and self.ui.file_chooser.path or nil
-    return path
+    return self.ui and self.ui.file_chooser and self.ui.file_chooser.path or nil
 end
 
 function FolderLock:addToMainMenu(menu_items)
@@ -132,6 +128,10 @@ function FolderLock:addToMainMenu(menu_items)
             {
                 text = _("Lock current folder"),
                 callback = function()
+                    local UIManager = require("ui/uimanager")
+                    local InfoMessage = require("ui/widget/infomessage")
+                    local InputDialog = require("ui/widget/inputdialog")
+
                     local path = get_current_folder(self)
                     if not path then
                         UIManager:show(InfoMessage:new({
@@ -143,7 +143,6 @@ function FolderLock:addToMainMenu(menu_items)
 
                     local normalized_path = FolderLockCore.normalize_path(path) or path
 
-                    -- First password entry dialog
                     local pw_dialog
                     pw_dialog = InputDialog:new({
                         title = _("Lock folder"),
@@ -173,7 +172,6 @@ function FolderLock:addToMainMenu(menu_items)
                                         end
                                         UIManager:close(pw_dialog)
 
-                                        -- Re-confirm password dialog
                                         local confirm_dialog
                                         confirm_dialog = InputDialog:new({
                                             title = _("Confirm password"),
@@ -239,6 +237,10 @@ function FolderLock:addToMainMenu(menu_items)
             {
                 text = _("Unlock current folder"),
                 callback = function()
+                    local UIManager = require("ui/uimanager")
+                    local InfoMessage = require("ui/widget/infomessage")
+                    local InputDialog = require("ui/widget/inputdialog")
+
                     local path = get_current_folder(self)
                     if not path then
                         UIManager:show(InfoMessage:new({
@@ -311,6 +313,11 @@ function FolderLock:addToMainMenu(menu_items)
             {
                 text = _("Check for updates"),
                 callback = function()
+                    local UIManager = require("ui/uimanager")
+                    local InfoMessage = require("ui/widget/infomessage")
+                    local ConfirmBox = require("ui/widget/confirmbox")
+                    local Trapper = require("ui/trapper")
+
                     UIManager:show(ConfirmBox:new({
                         text = _("Check for Folder Lock updates?"),
                         ok_text = _("Check"),
