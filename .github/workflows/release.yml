@@ -58,12 +58,16 @@ jobs:
             pkg-config \
             python3 \
             lua5.4 \
+            luarocks \
             libssl-dev \
             unzip \
             wayland-protocols \
             wget \
             zlib1g-dev \
             zip
+
+      - name: Install dkjson
+        run: sudo luarocks install dkjson
 
       - name: Run unit tests
         run: make test-unit
