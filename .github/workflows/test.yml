@@ -10,11 +10,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
-      - name: Setup Lua 5.4
+      - name: Setup Lua
         uses: leafo/gh-actions-lua@v13
-        with:
-          luaVersion: "5.4"
-          luarocks: true
+      - uses: leafo/gh-actions-luarocks@v4
       - name: Install dkjson
         run: luarocks install dkjson
       - name: Run unit tests
