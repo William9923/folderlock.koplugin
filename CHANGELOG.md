@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] - 2026-06-23
+
+### Changed
+
+- **CI: use `leafo/gh-actions-lua@v13`** for unit tests — replaces manual `apt-get lua5.4` setup with a dedicated GitHub Action, avoiding Lua 5.1 version conflicts from transitive apt dependencies
+- **Vendored `tests/dkjson.lua`** — removes external LuaRocks dependency from CI; the test JSON library is now included in-repo (MIT, pure Lua)
+
+### Fixed
+
+- **Unit tests in CI** — switched from system `lua` (which resolves to Lua 5.1 via apt's alternatives system) to `leafo/gh-actions-lua` with Lua 5.4, fixing `table.pack` and other 5.2+ API availability in the test runner
+
 ## [0.2.0] - 2026-06-23
 
 ### Added
@@ -65,5 +76,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Set `LD_LIBRARY_PATH` for cmake SDL3 try_run in CI
 
+[0.2.1]: https://github.com/William9923/folderlock.koplugin/releases/tag/0.2.1
 [0.2.0]: https://github.com/William9923/folderlock.koplugin/releases/tag/0.2.0
 [0.1.0]: https://github.com/William9923/folderlock.koplugin/releases/tag/0.1.0
