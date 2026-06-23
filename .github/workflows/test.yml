@@ -10,13 +10,15 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
-      - name: Install Lua & dkjson
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y lua5.4 luarocks
-          sudo luarocks --lua=/usr/bin/lua5.4 install dkjson
+      - name: Setup Lua 5.4
+        uses: leafo/gh-actions-lua@v13
+        with:
+          luaVersion: "5.4"
+          luarocks: true
+      - name: Install dkjson
+        run: luarocks install dkjson
       - name: Run unit tests
-        run: LUA=lua5.4 make test-unit
+        run: make test-unit
 
   e2e:
     runs-on: ubuntu-latest

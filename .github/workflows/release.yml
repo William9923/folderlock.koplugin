@@ -19,7 +19,7 @@ jobs:
           fetch-depth: 0
           submodules: recursive
 
-      - name: Install dependencies
+      - name: Install dependencies (e2e build)
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -57,8 +57,6 @@ jobs:
             perl \
             pkg-config \
             python3 \
-            lua5.4 \
-            luarocks \
             libssl-dev \
             unzip \
             wayland-protocols \
@@ -66,11 +64,16 @@ jobs:
             zlib1g-dev \
             zip
 
+      - name: Setup Lua 5.4
+        uses: leafo/gh-actions-lua@v13
+        with:
+          luaVersion: "5.4"
+          luarocks: true
       - name: Install dkjson
-        run: sudo luarocks --lua=/usr/bin/lua5.4 install dkjson
+        run: luarocks install dkjson
 
       - name: Run unit tests
-        run: LUA=lua5.4 make test-unit
+        run: make test-unit
 
       - name: Run end-to-end tests
         run: make test-e2e
