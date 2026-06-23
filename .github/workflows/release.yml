@@ -19,7 +19,7 @@ jobs:
           fetch-depth: 0
           submodules: recursive
 
-      - name: Install dependencies
+      - name: Install dependencies (e2e build)
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -57,7 +57,6 @@ jobs:
             perl \
             pkg-config \
             python3 \
-            lua5.4 \
             libssl-dev \
             unzip \
             wayland-protocols \
@@ -65,6 +64,10 @@ jobs:
             zlib1g-dev \
             zip
 
+      - name: Setup Lua
+        uses: leafo/gh-actions-lua@v13
+        with:
+          luaVersion: "5.4"
       - name: Run unit tests
         run: make test-unit
 

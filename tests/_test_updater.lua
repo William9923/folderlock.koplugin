@@ -2,7 +2,7 @@ local helpers = dofile("tests/_helpers.lua")
 local t = helpers.runner()
 local eq = helpers.eq
 
-local dkjson = require("dkjson")
+local dkjson = dofile("tests/dkjson.lua")
 
 -- Stub the KOReader modules that folderlock_updater.lua depends on.
 -- Returns a restore function that undoes the stubs.
