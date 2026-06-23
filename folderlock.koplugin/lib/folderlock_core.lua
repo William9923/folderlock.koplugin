@@ -2,18 +2,13 @@
 Core logic for folder lock registry and path checks.
 --]]
 
-local DataStorage = require("datastorage")
-local ffiUtil = require("ffi/util")
-local LuaSettings = require("luasettings")
-local bit = require("bit")
-
 local FolderLockCore = {}
 
 local _lock_registry = nil
 local _registry_settings = nil
-local _registry_file = DataStorage:getSettingsDir() .. "/folderlock_registry.lua"
 
 function FolderLockCore.djb2_hash(str)
+    local bit = require("bit")
     local hash = 5381
     for i = 1, #str do
         local byte = str:byte(i)
@@ -23,6 +18,7 @@ function FolderLockCore.djb2_hash(str)
 end
 
 function FolderLockCore.normalize_path(path)
+    local ffiUtil = require("ffi/util")
     if not path or path == "" then
         return nil
     end
@@ -38,6 +34,9 @@ local function _save_registry()
 end
 
 function FolderLockCore.load_registry()
+    local DataStorage = require("datastorage")
+    local LuaSettings = require("luasettings")
+    local _registry_file = DataStorage:getSettingsDir() .. "/folderlock_registry.lua"
     _registry_settings = LuaSettings:open(_registry_file)
     _lock_registry = _registry_settings:readSetting("locks") or {}
     return _lock_registry

@@ -5,9 +5,7 @@ Plugin to password-protect folders via a lock registry.
 --
 
 local FolderLockCore = require("lib/folderlock_core")
-local InfoMessage = require("ui/widget/infomessage")
-local InputDialog = require("ui/widget/inputdialog")
-local UIManager = require("ui/uimanager")
+local FolderLockUpdater = require("lib/folderlock_updater")
 local WidgetContainer = require("ui/widget/container/widgetcontainer")
 local _ = require("gettext")
 
@@ -24,12 +22,15 @@ local function ensure_filechooser_patch()
         return
     end
 
+    local UIManager = require("ui/uimanager")
+    local InfoMessage = require("ui/widget/infomessage")
+    local InputDialog = require("ui/widget/inputdialog")
+
     _orig_FileChooser_changeToPath = FileChooser.changeToPath
 
     FileChooser.changeToPath = function(self_fc, path, focused_path)
         local chooser_name = self_fc and self_fc.name or "nil"
 
-        -- Only guard FileManager navigation.
         if chooser_name ~= "filemanager" then
             return _orig_FileChooser_changeToPath(self_fc, path, focused_path)
         end
@@ -106,18 +107,18 @@ local FolderLock = WidgetContainer:extend({
 
 function FolderLock:init()
     FolderLockCore.load_registry()
+    FolderLockUpdater.set_plugin_dir(self.path)
+    FolderLockUpdater.recover_or_cleanup()
 
     if self.ui and self.ui.menu then
         self.ui.menu:registerToMainMenu(self)
     end
 
-    -- Install one class-level patch for all FileChooser instances.
     ensure_filechooser_patch()
 end
 
 local function get_current_folder(self)
-    local path = self.ui and self.ui.file_chooser and self.ui.file_chooser.path or nil
-    return path
+    return self.ui and self.ui.file_chooser and self.ui.file_chooser.path or nil
 end
 
 function FolderLock:addToMainMenu(menu_items)
@@ -128,6 +129,10 @@ function FolderLock:addToMainMenu(menu_items)
             {
                 text = _("Lock current folder"),
                 callback = function()
+                    local UIManager = require("ui/uimanager")
+                    local InfoMessage = require("ui/widget/infomessage")
+                    local InputDialog = require("ui/widget/inputdialog")
+
                     local path = get_current_folder(self)
                     if not path then
                         UIManager:show(InfoMessage:new({
@@ -139,7 +144,6 @@ function FolderLock:addToMainMenu(menu_items)
 
                     local normalized_path = FolderLockCore.normalize_path(path) or path
 
-                    -- First password entry dialog
                     local pw_dialog
                     pw_dialog = InputDialog:new({
                         title = _("Lock folder"),
@@ -169,7 +173,6 @@ function FolderLock:addToMainMenu(menu_items)
                                         end
                                         UIManager:close(pw_dialog)
 
-                                        -- Re-confirm password dialog
                                         local confirm_dialog
                                         confirm_dialog = InputDialog:new({
                                             title = _("Confirm password"),
@@ -235,6 +238,10 @@ function FolderLock:addToMainMenu(menu_items)
             {
                 text = _("Unlock current folder"),
                 callback = function()
+                    local UIManager = require("ui/uimanager")
+                    local InfoMessage = require("ui/widget/infomessage")
+                    local InputDialog = require("ui/widget/inputdialog")
+
                     local path = get_current_folder(self)
                     if not path then
                         UIManager:show(InfoMessage:new({
@@ -304,7 +311,65 @@ function FolderLock:addToMainMenu(menu_items)
                     unlock_dialog:onShowKeyboard()
                 end,
             },
+            {
+                text_func = function()
+                    return _("Version: ") .. FolderLockUpdater.get_current_version()
+                end,
+                callback = function()
+                    local UIManager = require("ui/uimanager")
+                    local InfoMessage = require("ui/widget/infomessage")
+                    UIManager:show(InfoMessage:new({
+                        text = _("Folder Lock ") .. FolderLockUpdater.get_current_version(),
+                        timeout = 3,
+                    }))
+                end,
+            },
+            {
+                text = _("Check for updates"),
+                callback = function()
+                    local UIManager = require("ui/uimanager")
+                    local InfoMessage = require("ui/widget/infomessage")
+                    local ConfirmBox = require("ui/widget/confirmbox")
+                    local Trapper = require("ui/trapper")
 
+                    UIManager:show(ConfirmBox:new({
+                        text = _("Check for Folder Lock updates?"),
+                        ok_text = _("Check"),
+                        ok_callback = function()
+                            Trapper:wrap(function()
+                                local result, err = FolderLockUpdater.check()
+                                if not result then
+                                    UIManager:show(InfoMessage:new({
+                                        text = _("Update check failed: ") .. err,
+                                    }))
+                                    return
+                                end
+                                if not result.available then
+                                    UIManager:show(InfoMessage:new({
+                                        text = _("You're running the latest version (") .. result.current_version .. _(")."),
+                                        timeout = 3,
+                                    }))
+                                    return
+                                end
+                                UIManager:show(ConfirmBox:new({
+                                    text = _("Update ") .. result.latest_version .. _(" is available. Install?"),
+                                    ok_text = _("Install"),
+                                    ok_callback = function()
+                                        local install_ok, install_err = FolderLockUpdater.install(result.latest_version, result.zip_url, result.sha256_url)
+                                        if install_err then
+                                            UIManager:show(InfoMessage:new({
+                                                text = _("Install failed: ") .. install_err,
+                                            }))
+                                            return
+                                        end
+                                        UIManager:askForRestart(_("Update installed. Please restart KOReader."))
+                                    end,
+                                }))
+                            end)
+                        end,
+                    }))
+                end,
+            },
         },
     }
 end
