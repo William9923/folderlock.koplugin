@@ -28,6 +28,7 @@ folderlock.koplugin is designed to be a privacy barrier, not a software fortress
 - Unlock a folder from the same menu
 - Password prompt when opening locked folders
 - Parent locks cascade to subfolders automatically
+- **Lock/unlock via long-press** — lock or unlock any folder directly from FileManager's long-press context menu; no need to open the main menu
 - **Auto-update** — check for and install new versions from inside KOReader (**Folder Lock → Check for updates**)
 
 ## Installation
@@ -67,6 +68,20 @@ Once installed, you can update from inside KOReader:
 5. To remove the lock permanently, go to **Folder Lock** > **Unlock current folder** and enter your current password.
 
    ![Permanent unlock](docs/screenshots/unlock-permanent.png)
+
+### Locking/Unlocking via long-press
+
+As a faster alternative, you can lock or unlock a folder directly from the long-press menu:
+
+1. In FileManager, long-press a folder.
+2. Tap **Lock folder** (if the folder is unlocked) or **Unlock folder** (if the folder is locked).
+
+   ![Long-press lock](docs/screenshots/long-press-lock-folder.png)
+   ![Long-press unlock](docs/screenshots/long-press-unlock-folder.png)
+
+3. Enter your password and confirm (lock) or enter your password (unlock).
+
+If a parent folder is locked, no lock/unlock button appears — the lock is inherited.
 
 ## Upcoming Features
 
