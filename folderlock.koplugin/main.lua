@@ -4,6 +4,11 @@ Plugin to password-protect folders via a lock registry.
 --]]
 --
 
+local UIManager = require("ui/uimanager")
+local InfoMessage = require("ui/widget/infomessage")
+local InputDialog = require("ui/widget/inputdialog")
+local FileChooser = require("ui/widget/filechooser")
+
 local FolderLockCore = require("lib/folderlock_core")
 local FolderLockUpdater = require("lib/folderlock_updater")
 local WidgetContainer = require("ui/widget/container/widgetcontainer")
@@ -18,14 +23,9 @@ local function ensure_filechooser_patch()
 		return
 	end
 
-	local FileChooser = require("ui/widget/filechooser")
 	if type(FileChooser.changeToPath) ~= "function" then
 		return
 	end
-
-	local UIManager = require("ui/uimanager")
-	local InfoMessage = require("ui/widget/infomessage")
-	local InputDialog = require("ui/widget/inputdialog")
 
 	_orig_FileChooser_changeToPath = FileChooser.changeToPath
 
@@ -122,10 +122,37 @@ function FolderLock:init()
 		if is_file then
 			return nil
 		end
-		return { {
-			text = _("Folder Lock"),
-			callback = function() end,
-		} }
+		local normalized = FolderLockCore.normalize_path(file)
+		local exact_hash = FolderLockCore.get_lock_hash(normalized)
+		local ancestor_lock = FolderLockCore.check_folder_lock(file)
+
+		if exact_hash then
+			return {
+				{
+					text = _("Unlock folder"),
+					callback = function()
+						UIManager:show(InfoMessage:new({
+							text = _("Unlock folder"),
+							timeout = 3,
+						}))
+					end,
+				},
+			}
+		elseif not ancestor_lock then
+			return {
+				{
+					text = _("Lock folder"),
+					callback = function()
+						UIManager:show(InfoMessage:new({
+							text = _("Lock folder"),
+							timeout = 3,
+						}))
+					end,
+				},
+			}
+		end
+		-- ancestor is locked but not this folder → skip button
+		return nil
 	end)
 end
 
@@ -141,10 +168,6 @@ function FolderLock:addToMainMenu(menu_items)
 			{
 				text = _("Lock current folder"),
 				callback = function()
-					local UIManager = require("ui/uimanager")
-					local InfoMessage = require("ui/widget/infomessage")
-					local InputDialog = require("ui/widget/inputdialog")
-
 					local path = get_current_folder(self)
 					if not path then
 						UIManager:show(InfoMessage:new({
@@ -244,10 +267,6 @@ function FolderLock:addToMainMenu(menu_items)
 			{
 				text = _("Unlock current folder"),
 				callback = function()
-					local UIManager = require("ui/uimanager")
-					local InfoMessage = require("ui/widget/infomessage")
-					local InputDialog = require("ui/widget/inputdialog")
-
 					local path = get_current_folder(self)
 					if not path then
 						UIManager:show(InfoMessage:new({
@@ -322,8 +341,6 @@ function FolderLock:addToMainMenu(menu_items)
 					return _("Version: ") .. FolderLockUpdater.get_current_version()
 				end,
 				callback = function()
-					local UIManager = require("ui/uimanager")
-					local InfoMessage = require("ui/widget/infomessage")
 					UIManager:show(InfoMessage:new({
 						text = _("Folder Lock ") .. FolderLockUpdater.get_current_version(),
 						timeout = 3,
@@ -333,8 +350,6 @@ function FolderLock:addToMainMenu(menu_items)
 			{
 				text = _("Check for updates"),
 				callback = function()
-					local UIManager = require("ui/uimanager")
-					local InfoMessage = require("ui/widget/infomessage")
 					local ConfirmBox = require("ui/widget/confirmbox")
 					local Trapper = require("ui/trapper")
 
