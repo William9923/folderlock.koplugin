@@ -39,6 +39,7 @@ run-koreader:
 		exit 1; \
 	fi
 	@mkdir -p "$(KOREADER_DIR)/plugins"
+	@rm -rf "$(PLUGIN_DST)"
 	@ln -sfn "$(PLUGIN_SRC)" "$(PLUGIN_DST)"
 	@echo "Linked $(PLUGIN_DST) -> $(PLUGIN_SRC)"
 	@set --; \
