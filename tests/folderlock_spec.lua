@@ -343,6 +343,49 @@ describe("FolderLock plugin", function()
 		UIManager:close(second_dialog)
 	end)
 
+	describe("Long-press menu button", function()
+		it("shows Lock folder for unlocked folder", function()
+			seed_registry({})
+			create_filemanager(test_root)
+
+			local row_func = fm.file_dialog_added_buttons[1]
+			assert.is_not_nil(row_func, "row_func should be registered")
+
+			local result = row_func(open_dir, false, nil)
+			assert.is_not_nil(result, "should return a button row for folders")
+			assert.are.equal("Lock folder", result[1].text)
+		end)
+
+		it("shows Unlock folder for locked folder", function()
+			local locked_path = ffiUtil.realpath(locked_dir) or locked_dir
+			seed_registry({
+				[locked_path] = djb2_hash("secret123"),
+			})
+			create_filemanager(test_root)
+
+			local row_func = fm.file_dialog_added_buttons[1]
+			assert.is_not_nil(row_func, "row_func should be registered")
+
+			local result = row_func(locked_dir, false, nil)
+			assert.is_not_nil(result, "should return a button row for locked folder")
+			assert.are.equal("Unlock folder", result[1].text)
+		end)
+
+		it("returns nil for folder inside locked parent", function()
+			local locked_path = ffiUtil.realpath(locked_dir) or locked_dir
+			seed_registry({
+				[locked_path] = djb2_hash("secret123"),
+			})
+			create_filemanager(test_root)
+
+			local row_func = fm.file_dialog_added_buttons[1]
+			assert.is_not_nil(row_func, "row_func should be registered")
+
+			local result = row_func(locked_sub_dir, false, nil)
+			assert.is_nil(result, "should skip button for child of locked parent")
+		end)
+	end)
+
 	describe("Update system", function()
 		it("smoke: updater module loads and reports version", function()
 			local Updater = require("lib/folderlock_updater")
