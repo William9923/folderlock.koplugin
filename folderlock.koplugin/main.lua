@@ -3,6 +3,7 @@ Plugin to password-protect folders via a lock registry.
 @module koplugin.FolderLock
 --]]
 --
+local lfs = require("libs/libkoreader-lfs")
 
 local UIManager = require("ui/uimanager")
 local InfoMessage = require("ui/widget/infomessage")
@@ -265,7 +266,8 @@ function FolderLock:init()
 
 	-- register long press button
 	FileManager.addFileDialogButtons(self.ui, "folderlock", function(file, is_file, _book_props)
-		if is_file then
+		local is_directory = lfs.attributes(file, "mode") == "directory"
+		if is_file or ~is_directory then
 			return nil
 		end
 		local normalized = FolderLockCore.normalize_path(file)
