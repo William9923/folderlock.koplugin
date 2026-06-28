@@ -201,6 +201,86 @@ local function install_hasbeenopened_hook()
 	end
 end
 
+-- Build a simple "Locked" placeholder widget for a locked file row/cell.
+local function locked_file_placeholder(dimen)
+	local CenterContainer = require("ui/widget/container/centercontainer")
+	local TextWidget = require("ui/widget/textwidget")
+	local Font = require("ui/font")
+	local _ = require("gettext")
+
+	local font_size = math.floor(dimen.h * 0.3)
+	if font_size < 12 then
+		font_size = 12
+	end
+
+	return CenterContainer:new{
+		dimen = dimen,
+		TextWidget:new{
+			text = _("Locked"),
+			face = Font:getFace("cfont", font_size),
+		},
+	}
+end
+
+local function is_menu_entry_locked(entry)
+	local filepath = entry and (entry.file or entry.path)
+	if not filepath then
+		return false
+	end
+	return is_hidden_path(filepath)
+end
+
+local function wrap_menuitem_update(MenuItemClass)
+	local orig = MenuItemClass.update
+	MenuItemClass.update = function(self)
+		local is_directory = not (self.entry.is_file or self.entry.file)
+		local is_locked = is_menu_entry_locked(self.entry)
+
+		if is_locked and is_directory then
+			self.mandatory = nil
+		end
+
+		orig(self)
+
+		if is_locked and not is_directory then
+			local container = self._underline_container
+			if container and container[1] then
+				container[1]:free()
+			end
+			container[1] = locked_file_placeholder(container.dimen)
+		end
+	end
+end
+
+local function get_local_class(module_name, func_name, class_name)
+	local ok_up, userpatch = pcall(require, "userpatch")
+	if not ok_up or not userpatch then
+		return nil
+	end
+	local ok, mod = pcall(require, module_name)
+	if not ok or not mod then
+		return nil
+	end
+	local func = mod[func_name]
+	if type(func) ~= "function" then
+		return nil
+	end
+	local _, class = userpatch.getUpValue(func, class_name)
+	return class
+end
+
+local function install_menuitem_hooks()
+	local MosaicMenuItem = get_local_class("mosaicmenu", "_updateItemsBuildUI", "MosaicMenuItem")
+	if MosaicMenuItem then
+		wrap_menuitem_update(MosaicMenuItem)
+	end
+
+	local ListMenuItem = get_local_class("listmenu", "_updateItemsBuildUI", "ListMenuItem")
+	if ListMenuItem then
+		wrap_menuitem_update(ListMenuItem)
+	end
+end
+
 local function install_context_wrappers()
 	install_covermenu_wrapper()
 	install_view_wrappers()
@@ -212,6 +292,7 @@ function FolderLockCacheIsolation.install()
 	install_docprops_hook()
 	install_booklist_hook()
 	install_hasbeenopened_hook()
+	install_menuitem_hooks()
 end
 
 return FolderLockCacheIsolation
