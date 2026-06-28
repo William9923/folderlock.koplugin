@@ -48,4 +48,41 @@ t.test("is_hidden_path hides locked paths outside current context", function()
     eq(iso.is_hidden_path("/open/book.epub"), false)
 end)
 
+t.test("with_context sets and clears path", function()
+    local iso = load_isolation()
+    iso.set_current_path(nil)
+
+    local captured
+    local result = iso.with_context("/locked", function(arg)
+        captured = iso.get_current_path()
+        return arg * 2
+    end, 21)
+
+    eq(captured, "/locked")
+    eq(result, 42)
+    eq(iso.get_current_path(), nil)
+end)
+
+t.test("with_context clears path even if fn errors", function()
+    local iso = load_isolation()
+    iso.set_current_path(nil)
+
+    local ok, err = pcall(function()
+        iso.with_context("/locked", function()
+            error("boom")
+        end)
+    end)
+
+    eq(ok, false)
+    eq(iso.get_current_path(), nil)
+    assert(tostring(err):find("boom"), "expected error to propagate")
+end)
+
+t.test("install tolerates missing modules", function()
+    local iso = load_isolation()
+    -- covermenu and view modules are not available in plain lua; install should not error.
+    iso.install()
+    eq(iso.get_current_path(), nil)
+end)
+
 t.done()
