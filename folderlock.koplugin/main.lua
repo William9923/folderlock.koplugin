@@ -276,7 +276,7 @@ function FolderLock:init()
 	-- register long press button
 	FileManager.addFileDialogButtons(self.ui, "folderlock", function(file, is_file, _book_props)
 		local is_directory = lfs.attributes(file, "mode") == "directory"
-		if is_file or ~is_directory then
+		if is_file or not is_directory then
 			return nil
 		end
 		local normalized = FolderLockCore.normalize_path(file)
