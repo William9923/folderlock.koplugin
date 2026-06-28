@@ -4,6 +4,7 @@ FolderLock cover cache isolation hooks.
 --]]
 --
 
+local _ = require("gettext")
 local FolderLockCore = require("lib/folderlock_core")
 
 -- logger may not be available in plain-Lua unit tests
@@ -154,7 +155,7 @@ local function install_bookinfo_hook()
 	local orig = BookInfoManager.getBookInfo
 	BookInfoManager.getBookInfo = function(self, filepath, get_cover)
 		if filepath and is_hidden_path(filepath) then
-			return nil
+			return nil -- TODO: should we return dummy information instead ??
 		end
 		return orig(self, filepath, get_cover)
 	end
@@ -173,7 +174,7 @@ local function install_docprops_hook()
 	local orig = BookInfoManager.getDocProps
 	BookInfoManager.getDocProps = function(self, filepath)
 		if filepath and is_hidden_path(filepath) then
-			return nil
+			return nil -- TODO: should we return dummy information instead ??
 		end
 		return orig(self, filepath)
 	end
@@ -198,6 +199,32 @@ local function install_booklist_hook()
 	end
 end
 
+-- Sanitize a filename-only list item so locked files display as "Locked".
+local function sanitize_list_item(item, filepath_field)
+	local filepath = item and item[filepath_field]
+	if not filepath then
+		return
+	end
+	local locked_path = FolderLockCore.check_folder_lock(filepath)
+	if not locked_path then
+		return
+	end
+
+	-- When viewing inside the locked folder, don't hide.
+	local current = FolderLockCacheIsolation.get_current_path()
+	if current and is_inside(current, locked_path) then
+		return
+	end
+
+	item.text = _("Locked")
+	item.bidi_wrap_func = nil
+	item.bold = nil
+	item.opened = nil
+	item.mandatory = nil
+	item.mandatory_func = nil
+	item.doc_props = nil
+end
+
 local function install_hasbeenopened_hook()
 	local ok, BookList = pcall(require, "ui/widget/booklist")
 	if not ok or not BookList then
@@ -217,8 +244,7 @@ local function install_hasbeenopened_hook()
 	end
 end
 
--- Build a "Locked" placeholder widget matching each menu item's expected
--- widget structure, so paintTo() keeps working.
+-- placeholder locked file for mosaic view
 local function locked_file_placeholder_mosaic(dimen)
 	local CenterContainer = require("ui/widget/container/centercontainer")
 	local FrameContainer = require("ui/widget/container/framecontainer")
@@ -233,25 +259,26 @@ local function locked_file_placeholder_mosaic(dimen)
 	local frame_w = math.max(1, math.floor(dimen.w * 7 / 8))
 	local frame_h = math.max(1, dimen.h)
 
-	return CenterContainer:new{
-		dimen = Geom:new{ w = dimen.w, h = dimen.h },
-		FrameContainer:new{
+	return CenterContainer:new({
+		dimen = Geom:new({ w = dimen.w, h = dimen.h }),
+		FrameContainer:new({
 			width = frame_w,
 			height = frame_h,
 			margin = 0,
 			padding = 0,
 			bordersize = border,
-			CenterContainer:new{
-				dimen = Geom:new{ w = math.max(1, frame_w - 2 * border), h = math.max(1, frame_h - 2 * border) },
-				TextWidget:new{
+			CenterContainer:new({
+				dimen = Geom:new({ w = math.max(1, frame_w - 2 * border), h = math.max(1, frame_h - 2 * border) }),
+				TextWidget:new({
 					text = _("Locked"),
 					face = Font:getFace("cfont", font_size),
-				},
-			},
-		},
-	}
+				}),
+			}),
+		}),
+	})
 end
 
+-- placeholder locked file for listview
 local function locked_file_placeholder_list(dimen, underline_h)
 	local CenterContainer = require("ui/widget/container/centercontainer")
 	local Geom = require("ui/geometry")
@@ -268,16 +295,16 @@ local function locked_file_placeholder_list(dimen, underline_h)
 	end
 	local font_size = math.max(12, math.floor(body_h * 0.35))
 
-	return VerticalGroup:new{
-		VerticalSpan:new{ width = underline_h },
-		CenterContainer:new{
-			dimen = Geom:new{ w = dimen.w, h = body_h },
-			TextWidget:new{
+	return VerticalGroup:new({
+		VerticalSpan:new({ width = underline_h }),
+		CenterContainer:new({
+			dimen = Geom:new({ w = dimen.w, h = body_h }),
+			TextWidget:new({
 				text = _("Locked"),
 				face = Font:getFace("cfont", font_size),
-			},
-		},
-	}
+			}),
+		}),
+	})
 end
 
 local function locked_file_placeholder(class_name, dimen, underline_h)
@@ -298,68 +325,48 @@ end
 local function wrap_menuitem_update(MenuItemClass, class_name)
 	local orig = MenuItemClass.update
 	if type(orig) ~= "function" then
-		logger.info("FolderLock: no update() method on", class_name)
 		return
 	end
 	MenuItemClass.update = function(self)
 		local is_directory = not (self.entry.is_file or self.entry.file)
 		local is_locked = is_menu_entry_locked(self)
-		local current = FolderLockCacheIsolation.get_current_path()
-
-		logger.info("FolderLock:", class_name, "update filepath=", self.filepath,
-			"context=", current, "is_directory=", is_directory, "is_locked=", is_locked)
 
 		if is_locked and is_directory then
-			logger.info("FolderLock: hiding item count for locked directory", self.filepath)
 			self.mandatory = nil
 		end
 
 		orig(self)
 
 		if is_locked and not is_directory then
-			logger.info("FolderLock: replacing locked file widget with placeholder", self.filepath)
 			local container = self._underline_container
 			if container and container[1] then
 				container[1]:free()
 			end
 			container[1] = locked_file_placeholder(class_name, container.dimen, self.underline_h)
-			-- Treat locked placeholders as finalized so CoverMenu does not
-			-- schedule background extraction/update loops for these items.
-			self.bookinfo_found = true
+			self.bookinfo_found = true -- prevent re-schedule extract book info
 			self.cover_specs = nil
 			self.has_description = false
 		end
 	end
-	logger.info("FolderLock: wrapped", class_name, "update()")
 end
 
 local function get_local_class(module_name, func_name, class_name)
 	local ok_up, userpatch = pcall(require, "userpatch")
 	if not ok_up or not userpatch then
-		logger.info("FolderLock: userpatch not available")
 		return nil
 	end
 	local ok, mod = pcall(require, module_name)
 	if not ok or not mod then
-		logger.info("FolderLock: could not require", module_name)
 		return nil
 	end
 	local func = mod[func_name]
 	if type(func) ~= "function" then
-		logger.info("FolderLock:", module_name, "has no", func_name)
 		return nil
 	end
-	local class = userpatch.getUpValue(func, class_name)
-	if class then
-		logger.info("FolderLock: extracted", class_name, "from", module_name)
-	else
-		logger.info("FolderLock: could not extract upvalue", class_name, "from", module_name)
-	end
-	return class
+	return userpatch.getUpValue(func, class_name)
 end
 
 local function install_menuitem_hooks()
-	logger.info("FolderLock: installing menuitem hooks")
 	local MosaicMenuItem = get_local_class("mosaicmenu", "_updateItemsBuildUI", "MosaicMenuItem")
 	if MosaicMenuItem then
 		wrap_menuitem_update(MosaicMenuItem, "MosaicMenuItem")
@@ -384,6 +391,7 @@ function FolderLockCacheIsolation.install()
 	install_booklist_hook()
 	install_hasbeenopened_hook()
 	install_menuitem_hooks()
+  -- TODO: classic filename only patch
 end
 
 return FolderLockCacheIsolation
