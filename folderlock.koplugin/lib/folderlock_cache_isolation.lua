@@ -125,6 +125,82 @@ local function install_view_wrappers()
 	end
 end
 
+local function install_bookinfo_hook()
+	local ok, BookInfoManager = pcall(require, "bookinfomanager")
+	if not ok or not BookInfoManager then
+		return
+	end
+	if BookInfoManager._folderlock_getBookInfo_hooked then
+		return
+	end
+	BookInfoManager._folderlock_getBookInfo_hooked = true
+
+	local orig = BookInfoManager.getBookInfo
+	BookInfoManager.getBookInfo = function(self, filepath, get_cover)
+		if filepath and is_hidden_path(filepath) then
+			return nil
+		end
+		return orig(self, filepath, get_cover)
+	end
+end
+
+local function install_docprops_hook()
+	local ok, BookInfoManager = pcall(require, "bookinfomanager")
+	if not ok or not BookInfoManager then
+		return
+	end
+	if BookInfoManager._folderlock_getDocProps_hooked then
+		return
+	end
+	BookInfoManager._folderlock_getDocProps_hooked = true
+
+	local orig = BookInfoManager.getDocProps
+	BookInfoManager.getDocProps = function(self, filepath)
+		if filepath and is_hidden_path(filepath) then
+			return nil
+		end
+		return orig(self, filepath)
+	end
+end
+
+local function install_booklist_hook()
+	local ok, BookList = pcall(require, "ui/widget/booklist")
+	if not ok or not BookList then
+		return
+	end
+	if BookList._folderlock_getBookInfo_hooked then
+		return
+	end
+	BookList._folderlock_getBookInfo_hooked = true
+
+	local orig = BookList.getBookInfo
+	BookList.getBookInfo = function(file)
+		if file and is_hidden_path(file) then
+			return { been_opened = false }
+		end
+		return orig(file)
+	end
+end
+
+local function install_hasbeenopened_hook()
+	local ok, BookList = pcall(require, "ui/widget/booklist")
+	if not ok or not BookList then
+		return
+	end
+	if BookList._folderlock_hasBookBeenOpened_hooked then
+		return
+	end
+	BookList._folderlock_hasBookBeenOpened_hooked = true
+
+	local orig = BookList.hasBookBeenOpened
+	BookList.hasBookBeenOpened = function(file)
+		if file and is_hidden_path(file) then
+			return false
+		end
+		return orig(file)
+	end
+end
+
 local function install_context_wrappers()
 	install_covermenu_wrapper()
 	install_view_wrappers()
@@ -132,7 +208,10 @@ end
 
 function FolderLockCacheIsolation.install()
 	install_context_wrappers()
-	-- TODO: install BookInfoManager and BookList hooks in subsequent steps.
+	install_bookinfo_hook()
+	install_docprops_hook()
+	install_booklist_hook()
+	install_hasbeenopened_hook()
 end
 
 return FolderLockCacheIsolation
