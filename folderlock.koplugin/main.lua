@@ -12,6 +12,7 @@ local FileChooser = require("ui/widget/filechooser")
 
 local FolderLockCore = require("lib/folderlock_core")
 local FolderLockUpdater = require("lib/folderlock_updater")
+local FolderLockCacheIsolation = require("lib/folderlock_cache_isolation")
 local WidgetContainer = require("ui/widget/container/widgetcontainer")
 local FileManager = require("apps/filemanager/filemanager")
 local _ = require("gettext")
@@ -30,6 +31,13 @@ local function ensure_filechooser_patch()
 
 	_orig_FileChooser_changeToPath = FileChooser.changeToPath
 
+	local function navigate_with_context(self_fc, path, focused_path)
+		local real_path = FolderLockCore.normalize_path(path)
+		return FolderLockCacheIsolation.with_context(real_path, function()
+			return _orig_FileChooser_changeToPath(self_fc, path, focused_path)
+		end)
+	end
+
 	FileChooser.changeToPath = function(self_fc, path, focused_path)
 		local chooser_name = self_fc and self_fc.name or "nil"
 
@@ -44,7 +52,7 @@ local function ensure_filechooser_patch()
 
 		local locked_path = FolderLockCore.check_folder_lock(real_path)
 		if not locked_path then
-			return _orig_FileChooser_changeToPath(self_fc, path, focused_path)
+			return navigate_with_context(self_fc, path, focused_path)
 		end
 
 		local dialog
@@ -74,12 +82,12 @@ local function ensure_filechooser_patch()
 							local stored = FolderLockCore.get_lock_hash(locked_path)
 							if not stored then
 								UIManager:close(dialog)
-								return _orig_FileChooser_changeToPath(self_fc, path, focused_path)
+								return navigate_with_context(self_fc, path, focused_path)
 							end
 
 							if hash == stored then
 								UIManager:close(dialog)
-								return _orig_FileChooser_changeToPath(self_fc, path, focused_path)
+								return navigate_with_context(self_fc, path, focused_path)
 							end
 
 							UIManager:show(InfoMessage:new({
@@ -263,6 +271,7 @@ function FolderLock:init()
 	end
 
 	ensure_filechooser_patch()
+	FolderLockCacheIsolation.install()
 
 	-- register long press button
 	FileManager.addFileDialogButtons(self.ui, "folderlock", function(file, is_file, _book_props)
