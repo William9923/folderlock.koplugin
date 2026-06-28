@@ -6,6 +6,12 @@ FolderLock cover cache isolation hooks.
 
 local FolderLockCore = require("lib/folderlock_core")
 
+-- logger may not be available in plain-Lua unit tests
+local ok_logger, logger = pcall(require, "logger")
+if not ok_logger or not logger then
+	logger = { dbg = function() end, info = function() end, warn = function() end, err = function() end }
+end
+
 local FolderLockCacheIsolation = {}
 
 -- Current browse directory of the view that is rendering items.
@@ -75,6 +81,16 @@ local function install_covermenu_wrapper()
 		return
 	end
 	wrap_method(CoverMenu, "updateItems", function(self)
+		return self.path
+	end)
+end
+
+local function install_filechooser_wrapper()
+	local ok, FileChooser = pcall(require, "ui/widget/filechooser")
+	if not ok or not FileChooser then
+		return
+	end
+	wrap_method(FileChooser, "updateItems", function(self)
 		return self.path
 	end)
 end
@@ -222,19 +238,23 @@ local function locked_file_placeholder(dimen)
 	}
 end
 
-local function is_menu_entry_locked(entry)
-	local filepath = entry and (entry.file or entry.path)
+local function is_menu_entry_locked(item)
+	local filepath = item.filepath or (item.entry and (item.entry.file or item.entry.path))
 	if not filepath then
 		return false
 	end
 	return is_hidden_path(filepath)
 end
 
-local function wrap_menuitem_update(MenuItemClass)
+local function wrap_menuitem_update(MenuItemClass, class_name)
 	local orig = MenuItemClass.update
+	if type(orig) ~= "function" then
+		logger.dbg("FolderLock: no update() method on", class_name)
+		return
+	end
 	MenuItemClass.update = function(self)
 		local is_directory = not (self.entry.is_file or self.entry.file)
-		local is_locked = is_menu_entry_locked(self.entry)
+		local is_locked = is_menu_entry_locked(self)
 
 		if is_locked and is_directory then
 			self.mandatory = nil
@@ -250,6 +270,7 @@ local function wrap_menuitem_update(MenuItemClass)
 			container[1] = locked_file_placeholder(container.dimen)
 		end
 	end
+	logger.dbg("FolderLock: wrapped", class_name, "update()")
 end
 
 local function get_local_class(module_name, func_name, class_name)
@@ -259,30 +280,36 @@ local function get_local_class(module_name, func_name, class_name)
 	end
 	local ok, mod = pcall(require, module_name)
 	if not ok or not mod then
+		logger.dbg("FolderLock: could not require", module_name)
 		return nil
 	end
 	local func = mod[func_name]
 	if type(func) ~= "function" then
+		logger.dbg("FolderLock:", module_name, "has no", func_name)
 		return nil
 	end
 	local _, class = userpatch.getUpValue(func, class_name)
+	if not class then
+		logger.dbg("FolderLock: could not extract upvalue", class_name, "from", module_name)
+	end
 	return class
 end
 
 local function install_menuitem_hooks()
 	local MosaicMenuItem = get_local_class("mosaicmenu", "_updateItemsBuildUI", "MosaicMenuItem")
 	if MosaicMenuItem then
-		wrap_menuitem_update(MosaicMenuItem)
+		wrap_menuitem_update(MosaicMenuItem, "MosaicMenuItem")
 	end
 
 	local ListMenuItem = get_local_class("listmenu", "_updateItemsBuildUI", "ListMenuItem")
 	if ListMenuItem then
-		wrap_menuitem_update(ListMenuItem)
+		wrap_menuitem_update(ListMenuItem, "ListMenuItem")
 	end
 end
 
 local function install_context_wrappers()
 	install_covermenu_wrapper()
+	install_filechooser_wrapper()
 	install_view_wrappers()
 end
 
