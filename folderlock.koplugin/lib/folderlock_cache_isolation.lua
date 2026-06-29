@@ -199,30 +199,28 @@ local function install_booklist_hook()
 	end
 end
 
--- Sanitize a filename-only list item so locked files display as "Locked".
-local function sanitize_list_item(item, filepath_field)
-	local filepath = item and item[filepath_field]
-	if not filepath then
+-- Hook Menu.getMenuText to hide filenames of locked files in classic mode.
+local function install_menu_getmenutext_hook()
+	local ok, Menu = pcall(require, "ui/widget/menu")
+	if not ok or not Menu then
 		return
 	end
-	local locked_path = FolderLockCore.check_folder_lock(filepath)
-	if not locked_path then
+	if Menu._folderlock_getMenuText_hooked then
 		return
 	end
+	Menu._folderlock_getMenuText_hooked = true
 
-	-- When viewing inside the locked folder, don't hide.
-	local current = FolderLockCacheIsolation.get_current_path()
-	if current and is_inside(current, locked_path) then
-		return
+	local orig = Menu.getMenuText
+	Menu.getMenuText = function(item)
+		if item then
+			local filepath = item.path or item.file
+			if filepath and is_hidden_path(filepath) then
+				item.mandatory = nil
+				return _("Locked")
+			end
+		end
+		return orig(item)
 	end
-
-	item.text = _("Locked")
-	item.bidi_wrap_func = nil
-	item.bold = nil
-	item.opened = nil
-	item.mandatory = nil
-	item.mandatory_func = nil
-	item.doc_props = nil
 end
 
 local function install_hasbeenopened_hook()
@@ -391,7 +389,7 @@ function FolderLockCacheIsolation.install()
 	install_booklist_hook()
 	install_hasbeenopened_hook()
 	install_menuitem_hooks()
-  -- TODO: classic filename only patch
+	install_menu_getmenutext_hook()
 end
 
 return FolderLockCacheIsolation
