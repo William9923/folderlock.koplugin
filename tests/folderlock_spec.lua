@@ -410,4 +410,51 @@ describe("FolderLock plugin", function()
 			assert.is_true(ok, tostring(err))
 		end)
 	end)
+
+	describe("Cover cache isolation hooks", function()
+		it("BookList.hasBookBeenOpened hides locked files outside context and shows inside", function()
+			local password = "secret123"
+			local locked_path = ffiUtil.realpath(locked_dir) or locked_dir
+			seed_registry({
+				[locked_path] = djb2_hash(password),
+			})
+
+			create_filemanager(test_root)
+
+			local locked_file = locked_dir .. "/book.epub"
+			local sidecar_dir = locked_dir .. "/book.sdr"
+			local sidecar_file = sidecar_dir .. "/metadata.epub.lua"
+			makePath(sidecar_dir)
+			local f = io.open(sidecar_file, "w")
+			f:write("return {}\n")
+			f:close()
+
+			local FolderLockCacheIsolation = require("lib/folderlock_cache_isolation")
+			local BookList = require("ui/widget/booklist")
+
+			-- Outside context → hidden
+			FolderLockCacheIsolation.set_current_path(test_root)
+			BookList.book_info_cache[locked_file] = nil
+			assert.is_false(BookList.hasBookBeenOpened(locked_file))
+
+			-- Inside locked folder context → visible
+			FolderLockCacheIsolation.set_current_path(locked_path)
+			BookList.book_info_cache[locked_file] = nil
+			assert.is_true(BookList.hasBookBeenOpened(locked_file))
+
+			FolderLockCacheIsolation.set_current_path(nil)
+		end)
+
+		it("BookInfoManager and BookList hooks are installed when modules are available", function()
+			local BookList = require("ui/widget/booklist")
+			assert.is_true(BookList._folderlock_getBookInfo_hooked)
+			assert.is_true(BookList._folderlock_hasBookBeenOpened_hooked)
+
+			local ok, BookInfoManager = pcall(require, "bookinfomanager")
+			if ok and BookInfoManager then
+				assert.is_true(BookInfoManager._folderlock_getBookInfo_hooked)
+				assert.is_true(BookInfoManager._folderlock_getDocProps_hooked)
+			end
+		end)
+	end)
 end)
