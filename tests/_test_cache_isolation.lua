@@ -11,8 +11,11 @@ local function load_isolation(mock_check, mocks)
 			return nil
 		end,
 	}
+	package.loaded["gettext"] = function(s) return s end
+
 	package.loaded["bookinfomanager"] = mocks.bookinfomanager or nil
 	package.loaded["ui/widget/booklist"] = mocks.booklist or nil
+	package.loaded["ui/widget/menu"] = mocks.menu or nil
 	package.loaded["lib/folderlock_cache_isolation"] = nil
 
 	local iso = require("lib/folderlock_cache_isolation")
@@ -37,6 +40,14 @@ local function make_mock_booklist()
 		end,
 		hasBookBeenOpened = function(file)
 			return true
+		end,
+	}
+end
+
+local function make_mock_menu()
+	return {
+		getMenuText = function(item)
+			return item.text or ""
 		end,
 	}
 end
@@ -185,6 +196,83 @@ t.test("install is idempotent", function()
 	iso.set_current_path("/locked")
 	eq(bim:getBookInfo("/locked/book.epub"), { title = "/locked/book.epub", get_cover = nil })
 	eq(bl.hasBookBeenOpened("/locked/book.epub"), true)
+end)
+
+t.test("Menu.getMenuText returns Locked for locked file outside context", function()
+	local menu = make_mock_menu()
+	local iso = load_isolation(function(filepath)
+		if filepath:sub(1, #"/locked") == "/locked" then
+			return "/locked"
+		end
+		return nil
+	end, {
+		menu = menu,
+	})
+
+	iso.install()
+
+	iso.set_current_path(nil)
+	local item = { text = "secret.epub", path = "/locked/secret.epub", mandatory = "1.5 MB" }
+	local result = menu.getMenuText(item)
+	eq(result, "Locked")
+	eq(item.mandatory, nil)
+end)
+
+t.test("Menu.getMenuText returns original text for unlocked file", function()
+	local menu = make_mock_menu()
+	local iso = load_isolation(function(filepath)
+		if filepath:sub(1, #"/locked") == "/locked" then
+			return "/locked"
+		end
+		return nil
+	end, {
+		menu = menu,
+	})
+
+	iso.install()
+
+	local item = { text = "book.epub", path = "/open/book.epub" }
+	local result = menu.getMenuText(item)
+	eq(result, "book.epub")
+end)
+
+t.test("Menu.getMenuText uses item.file as fallback path", function()
+	local menu = make_mock_menu()
+	local iso = load_isolation(function(filepath)
+		if filepath:sub(1, #"/locked") == "/locked" then
+			return "/locked"
+		end
+		return nil
+	end, {
+		menu = menu,
+	})
+
+	iso.install()
+
+	iso.set_current_path(nil)
+	local item = { text = "locked.doc", file = "/locked/locked.doc" }
+	eq(menu.getMenuText(item), "Locked")
+end)
+
+t.test("Menu.getMenuText hook is idempotent", function()
+	local menu = make_mock_menu()
+	local iso = load_isolation(function(filepath)
+		if filepath:sub(1, #"/locked") == "/locked" then
+			return "/locked"
+		end
+		return nil
+	end, {
+		menu = menu,
+		bookinfomanager = make_mock_bookinfo_manager(),
+		booklist = make_mock_booklist(),
+	})
+
+	iso.install()
+	iso.install()
+
+	iso.set_current_path("/other")
+	local item = { text = "doc.pdf", path = "/other/doc.pdf" }
+	eq(menu.getMenuText(item), "doc.pdf")
 end)
 
 t.done()
