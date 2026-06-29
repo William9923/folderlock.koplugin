@@ -212,10 +212,29 @@ t.test("Menu.getMenuText returns Locked for locked file outside context", functi
 	iso.install()
 
 	iso.set_current_path(nil)
-	local item = { text = "secret.epub", path = "/locked/secret.epub", mandatory = "1.5 MB" }
+	local item = { text = "secret.epub", path = "/locked/secret.epub", is_file = true, mandatory = "1.5 MB" }
 	local result = menu.getMenuText(item)
 	eq(result, "Locked")
 	eq(item.mandatory, nil)
+end)
+
+t.test("Menu.getMenuText shows locked directory name unchanged", function()
+	local menu = make_mock_menu()
+	local iso = load_isolation(function(filepath)
+		if filepath:sub(1, #"/locked") == "/locked" then
+			return "/locked"
+		end
+		return nil
+	end, {
+		menu = menu,
+	})
+
+	iso.install()
+
+	iso.set_current_path(nil)
+	local item = { text = "locked", path = "/locked" }
+	local result = menu.getMenuText(item)
+	eq(result, "locked")
 end)
 
 t.test("Menu.getMenuText returns original text for unlocked file", function()

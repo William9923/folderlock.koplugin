@@ -215,8 +215,11 @@ local function install_menu_getmenutext_hook()
 		if item then
 			local filepath = item.path or item.file
 			if filepath and is_hidden_path(filepath) then
-				item.mandatory = nil
-				return _("Locked")
+				local is_directory = not (item.is_file or item.file)
+				if not is_directory then
+					item.mandatory = nil
+					return _("Locked")
+				end
 			end
 		end
 		return orig(item)
