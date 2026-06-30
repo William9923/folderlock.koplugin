@@ -46,6 +46,11 @@ describe("FolderLock plugin", function()
 	end
 
 	local function reset_global_plugin_state()
+		local ok_guard, FolderLockGuard = pcall(require, "lib/folderlock_guard")
+		if ok_guard and FolderLockGuard and type(FolderLockGuard._reset) == "function" then
+			FolderLockGuard._reset()
+		end
+
 		local FileChooser = require("ui/widget/filechooser")
 		if not orig_FileChooser_changeToPath then
 			orig_FileChooser_changeToPath = FileChooser.changeToPath

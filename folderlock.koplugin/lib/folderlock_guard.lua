@@ -28,8 +28,9 @@ end
 -- single-use unlock token table
 local _allow_once = {}
 
--- FileChooser patch state
-local _filechooser_patch_installed = false
+-- FileChooser patch state: keep a reference to the wrapper so we can tell
+-- whether an external reset (e.g. test teardown) removed it.
+local _filechooser_patch_wrapper = nil
 
 -- List source patch state
 local _list_patches_installed = false
@@ -161,11 +162,12 @@ end
 -- ── FileChooser.changeToPath patch ──
 
 function FolderLockGuard.install_ensure_filechooser_patch()
-	if _filechooser_patch_installed then
+	if type(FileChooser.changeToPath) ~= "function" then
 		return
 	end
 
-	if type(FileChooser.changeToPath) ~= "function" then
+	-- idempotent patch check
+	if _filechooser_patch_wrapper and FileChooser.changeToPath == _filechooser_patch_wrapper then
 		return
 	end
 
@@ -207,7 +209,7 @@ function FolderLockGuard.install_ensure_filechooser_patch()
 		end)
 	end
 
-	_filechooser_patch_installed = true
+	_filechooser_patch_wrapper = FileChooser.changeToPath
 end
 
 -- ── List source patches (History, Collection, File Search) ──
@@ -292,8 +294,10 @@ function FolderLockGuard.install_readerui_patches()
 		return
 	end
 
+	-- A locked file is "visible" (not hidden) exactly when we are browsing
+	-- inside the locked tree that contains it.
 	local function is_inside_current_locked_tree(file)
-		return FolderLockCacheIsolation.is_hidden_path(file)
+		return not FolderLockCacheIsolation.is_hidden_path(file) and FolderLockCore.check_folder_lock(file) ~= nil
 	end
 
 	local orig_showReader = ReaderUI.showReader
