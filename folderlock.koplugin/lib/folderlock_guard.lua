@@ -292,6 +292,10 @@ function FolderLockGuard.install_readerui_patches()
 		return
 	end
 
+	local function is_inside_current_locked_tree(file)
+		return FolderLockCacheIsolation.is_hidden_path(file)
+	end
+
 	local orig_showReader = ReaderUI.showReader
 	-- Patch showReader in ReaderUI
 	ReaderUI.showReader = function(self, file, provider, seamless, is_provider_forced, after_open_callback)
@@ -308,6 +312,11 @@ function FolderLockGuard.install_readerui_patches()
 		end
 
 		if is_current() then
+			return orig_showReader(self, file, provider, seamless, is_provider_forced, after_open_callback)
+		end
+
+		-- Already browsing inside the locked tree that contains this file -> allow
+		if is_inside_current_locked_tree(file) then
 			return orig_showReader(self, file, provider, seamless, is_provider_forced, after_open_callback)
 		end
 
@@ -342,6 +351,11 @@ function FolderLockGuard.install_readerui_patches()
 		end
 
 		if is_current() then
+			return orig_switchDocument(self, new_file, seamless, after_open_callback)
+		end
+
+		-- Already browsing inside the locked tree that contains this file -> allow
+		if is_inside_current_locked_tree(new_file) then
 			return orig_switchDocument(self, new_file, seamless, after_open_callback)
 		end
 
