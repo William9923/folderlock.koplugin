@@ -19,12 +19,19 @@ local FolderLockCacheIsolation = {}
 -- nil = no "inside locked folder" context → locked paths are hidden.
 local _current_browse_path = nil
 
+-- Path to the default cover image shown for locked files in mosaic/list view.
+local _cover_path = nil
+
 function FolderLockCacheIsolation.set_current_path(path)
 	_current_browse_path = path
 end
 
 function FolderLockCacheIsolation.get_current_path()
 	return _current_browse_path
+end
+
+function FolderLockCacheIsolation.set_cover_path(path)
+	_cover_path = path
 end
 
 -- Check whether child path is inside parent directory.
@@ -250,6 +257,23 @@ local function install_hasbeenopened_hook()
 	end
 end
 
+-- Return an ImageWidget for the default locked cover, or nil if unavailable.
+local function cover_or_locked(width, height)
+	if not _cover_path then
+		return nil
+	end
+	local ok, ImageWidget = pcall(require, "ui/widget/imagewidget")
+	if not ok or not ImageWidget then
+		return nil
+	end
+	return ImageWidget:new({
+		file = _cover_path,
+		width = width,
+		height = height,
+		alpha = true,
+	})
+end
+
 -- placeholder locked file for mosaic view
 local function locked_file_placeholder_mosaic(dimen)
 	local CenterContainer = require("ui/widget/container/centercontainer")
@@ -260,10 +284,20 @@ local function locked_file_placeholder_mosaic(dimen)
 	local Size = require("ui/size")
 	local _ = require("gettext")
 
-	local font_size = math.max(12, math.floor(dimen.h * 0.22))
 	local border = Size.border.thin
 	local frame_w = math.max(1, math.floor(dimen.w * 7 / 8))
 	local frame_h = math.max(1, dimen.h)
+	local inner_w = math.max(1, frame_w - 2 * border)
+	local inner_h = math.max(1, frame_h - 2 * border)
+
+	local content = cover_or_locked(inner_w, inner_h)
+	if not content then
+		local font_size = math.max(12, math.floor(dimen.h * 0.22))
+		content = TextWidget:new({
+			text = _("Locked"),
+			face = Font:getFace("cfont", font_size),
+		})
+	end
 
 	return CenterContainer:new({
 		dimen = Geom:new({ w = dimen.w, h = dimen.h }),
@@ -274,11 +308,8 @@ local function locked_file_placeholder_mosaic(dimen)
 			padding = 0,
 			bordersize = border,
 			CenterContainer:new({
-				dimen = Geom:new({ w = math.max(1, frame_w - 2 * border), h = math.max(1, frame_h - 2 * border) }),
-				TextWidget:new({
-					text = _("Locked"),
-					face = Font:getFace("cfont", font_size),
-				}),
+				dimen = Geom:new({ w = inner_w, h = inner_h }),
+				content,
 			}),
 		}),
 	})
@@ -299,16 +330,21 @@ local function locked_file_placeholder_list(dimen, underline_h)
 	if body_h < 1 then
 		body_h = dimen.h
 	end
-	local font_size = math.max(12, math.floor(body_h * 0.35))
+
+	local content = cover_or_locked(dimen.w, body_h)
+	if not content then
+		local font_size = math.max(12, math.floor(body_h * 0.35))
+		content = TextWidget:new({
+			text = _("Locked"),
+			face = Font:getFace("cfont", font_size),
+		})
+	end
 
 	return VerticalGroup:new({
 		VerticalSpan:new({ width = underline_h }),
 		CenterContainer:new({
 			dimen = Geom:new({ w = dimen.w, h = body_h }),
-			TextWidget:new({
-				text = _("Locked"),
-				face = Font:getFace("cfont", font_size),
-			}),
+			content,
 		}),
 	})
 end
