@@ -2,10 +2,13 @@
 Shared password-dialog helper and single-use unlock token for file-open interception.
 --]]
 
+local lfs = require("libs/libkoreader-lfs")
 local UIManager = require("ui/uimanager")
 local InfoMessage = require("ui/widget/infomessage")
 local InputDialog = require("ui/widget/inputdialog")
+local FileChooser = require("ui/widget/filechooser")
 local FolderLockCore = require("lib/folderlock_core")
+local FolderLockCacheIsolation = require("lib/folderlock_cache_isolation")
 local _ = require("gettext")
 
 local FolderLockGuard = {}
@@ -137,10 +140,69 @@ function FolderLockGuard.prompt_unlock_or_block(path, on_allowed, on_denied)
 	dialog:onShowKeyboard()
 end
 
+-- ── FileChooser.changeToPath patch ──
+
+local _filechooser_patch_installed = false
+local _orig_FileChooser_changeToPath = nil
+
+function FolderLockGuard.install_ensure_filechooser_patch()
+	if _filechooser_patch_installed then
+		return
+	end
+
+	if type(FileChooser.changeToPath) ~= "function" then
+		return
+	end
+
+	_orig_FileChooser_changeToPath = FileChooser.changeToPath
+
+	FileChooser.changeToPath = function(self_fc, path, focused_path)
+		local chooser_name = self_fc and self_fc.name or "nil"
+
+		if chooser_name ~= "filemanager" then
+			return _orig_FileChooser_changeToPath(self_fc, path, focused_path)
+		end
+
+		local real_path = FolderLockCore.normalize_path(path)
+		if not real_path then
+			return _orig_FileChooser_changeToPath(self_fc, path, focused_path)
+		end
+
+		-- Consume a pre-authorized unlock token (set by File Search folder result)
+		if FolderLockGuard.consume_once(real_path) then
+			return FolderLockCacheIsolation.with_context(real_path, function()
+				return _orig_FileChooser_changeToPath(self_fc, path, focused_path)
+			end)
+		end
+
+		local locked_path = FolderLockCore.check_folder_lock(real_path)
+		if not locked_path then
+			return FolderLockCacheIsolation.with_context(real_path, function()
+				return _orig_FileChooser_changeToPath(self_fc, path, focused_path)
+			end)
+		end
+
+		FolderLockGuard.prompt_unlock_or_block(real_path,
+			function()
+				FolderLockCacheIsolation.with_context(real_path, function()
+					_orig_FileChooser_changeToPath(self_fc, path, focused_path)
+				end)
+			end,
+			function()
+				UIManager:show(InfoMessage:new{
+					text = _("Access Denied"),
+					timeout = 2,
+				})
+			end
+		)
+	end
+
+	_filechooser_patch_installed = true
+end
+
 --- Install all file-open interception patches (call from plugin init).
---- Stub; sub-installers will be added in later steps.
 function FolderLockGuard.install()
-	-- placeholder
+	FolderLockGuard.install_ensure_filechooser_patch()
 end
 
 return FolderLockGuard

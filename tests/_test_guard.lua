@@ -13,7 +13,23 @@ local function fresh_guard(opts)
 	}
 	package.path = "./folderlock.koplugin/?.lua;" .. package.path
 	package.loaded["lib/folderlock_guard"] = nil
+	package.loaded["libs/libkoreader-lfs"] = {
+		attributes = function() end,
+	}
 	package.loaded["gettext"] = function(s) return s end
+
+	-- Stubs for modules required by folderlock_guard at load time
+	package.loaded["lib/folderlock_cache_isolation"] = {
+		set_current_path = function() end,
+		is_inside = function() return false end,
+		is_hidden_path = function() return false end,
+		with_context = function(ctx, fn, ...)
+			return fn(...)
+		end,
+	}
+	package.loaded["ui/widget/filechooser"] = {
+		changeToPath = function() return "original" end,
+	}
 
 	-- FolderLockCore mock
 	package.loaded["lib/folderlock_core"] = {
@@ -235,6 +251,25 @@ t.test("user-provided on_allowed receives its own callback", function()
 	local s = run_prompt("/open", function() my_allowed = true end, nil, { locked = false })
 	eq(s.allowed, true, "state.allowed set by wrapper")
 	eq(my_allowed, true, "user callback also called")
+end)
+
+-- ── install_ensure_filechooser_patch ──
+
+t.test("install_ensure_filechooser_patch patches FileChooser.changeToPath", function()
+	local Guard = fresh_guard()
+	local FC = require("ui/widget/filechooser")
+	local before = FC.changeToPath
+	Guard.install_ensure_filechooser_patch()
+	eq(FC.changeToPath ~= before, true, "changeToPath should be replaced")
+end)
+
+t.test("install_ensure_filechooser_patch is idempotent", function()
+	local Guard = fresh_guard()
+	local FC = require("ui/widget/filechooser")
+	Guard.install_ensure_filechooser_patch()
+	local patched = FC.changeToPath
+	Guard.install_ensure_filechooser_patch()
+	eq(FC.changeToPath, patched, "second call should not re-patch")
 end)
 
 t.done()
