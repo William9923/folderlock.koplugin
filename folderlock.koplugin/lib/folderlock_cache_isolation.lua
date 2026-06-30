@@ -258,7 +258,7 @@ local function install_hasbeenopened_hook()
 end
 
 -- Return an ImageWidget for the default locked cover, or nil if unavailable.
-local function cover_or_locked(width, height)
+local function cover_or_locked(width, height, scale_factor)
 	if not _cover_path then
 		return nil
 	end
@@ -270,6 +270,7 @@ local function cover_or_locked(width, height)
 		file = _cover_path,
 		width = width,
 		height = height,
+		scale_factor = scale_factor,
 		alpha = true,
 	})
 end
@@ -318,11 +319,18 @@ end
 -- placeholder locked file for listview
 local function locked_file_placeholder_list(dimen, underline_h)
 	local CenterContainer = require("ui/widget/container/centercontainer")
+	local FrameContainer = require("ui/widget/container/framecontainer")
 	local Geom = require("ui/geometry")
+	local HorizontalGroup = require("ui/widget/horizontalgroup")
+	local HorizontalSpan = require("ui/widget/horizontalspan")
+	local LeftContainer = require("ui/widget/container/leftcontainer")
+	local OverlapGroup = require("ui/widget/overlapgroup")
 	local TextWidget = require("ui/widget/textwidget")
 	local Font = require("ui/font")
+	local Size = require("ui/size")
 	local VerticalGroup = require("ui/widget/verticalgroup")
 	local VerticalSpan = require("ui/widget/verticalspan")
+	local Screen = require("device").screen
 	local _ = require("gettext")
 
 	underline_h = underline_h or 1
@@ -331,20 +339,60 @@ local function locked_file_placeholder_list(dimen, underline_h)
 		body_h = dimen.h
 	end
 
-	local content = cover_or_locked(dimen.w, body_h)
-	if not content then
+	local border_size = Size.border.thin
+	local cover_size = math.max(1, body_h - 2 * border_size)
+	local cover = cover_or_locked(cover_size, cover_size, 0)
+	if not cover then
 		local font_size = math.max(12, math.floor(body_h * 0.35))
-		content = TextWidget:new({
+		local content = TextWidget:new({
 			text = _("Locked"),
 			face = Font:getFace("cfont", font_size),
 		})
+		return VerticalGroup:new({
+			VerticalSpan:new({ width = underline_h }),
+			CenterContainer:new({
+				dimen = Geom:new({ w = dimen.w, h = body_h }),
+				content,
+			}),
+		})
 	end
+
+	local wleft = CenterContainer:new({
+		dimen = Geom:new({ w = body_h, h = body_h }),
+		FrameContainer:new({
+			width = cover_size + 2 * border_size,
+			height = cover_size + 2 * border_size,
+			margin = 0,
+			padding = 0,
+			bordersize = border_size,
+			CenterContainer:new({
+				dimen = Geom:new({ w = cover_size, h = cover_size }),
+				cover,
+			}),
+		}),
+	})
+
+	local title_font_size = math.max(12, math.floor(body_h * 0.35))
+	local wtitle = TextWidget:new({
+		text = _("Locked"),
+		face = Font:getFace("cfont", title_font_size),
+	})
+
+	local pad = Screen:scaleBySize(5)
+	local wmain = HorizontalGroup:new({
+		HorizontalSpan:new({ width = body_h + pad }),
+		LeftContainer:new({
+			dimen = Geom:new({ w = math.max(1, dimen.w - body_h - pad), h = body_h }),
+			wtitle,
+		}),
+	})
 
 	return VerticalGroup:new({
 		VerticalSpan:new({ width = underline_h }),
-		CenterContainer:new({
+		OverlapGroup:new({
 			dimen = Geom:new({ w = dimen.w, h = body_h }),
-			content,
+			wleft,
+			wmain,
 		}),
 	})
 end
