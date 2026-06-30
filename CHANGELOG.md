@@ -9,7 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Cover Cache Isolation** — hides covers, metadata, reading-progress marks, opened/bold status, and long-press Book Information for files inside locked folders in CoverBrowser-based lists (File Manager, History, Collections, File Search). Information becomes visible again after unlocking and entering the folder.
+- **Default locked cover image** — locked files in CoverBrowser mosaic and list views display a bundled cover image instead of a generic "Locked" label; list view shows the cover on the left with "Locked" as the title
+- **Cover Cache Isolation** — hides real covers, metadata, reading-progress marks, opened/bold status, and long-press Book Information for files inside locked folders in CoverBrowser-based lists (File Manager, History, Collections, File Search). Locked items display the default lock cover image (mosaic view) or the cover with a "Locked" title (list view). Information becomes visible again after unlocking and entering the folder.
 - **File-level access protection** — blocks opening books inside locked folders from History, Collections, File Search, and cross-folder navigation until the folder password is entered
 - `make test-e2e-verbose FILTER=...` target for verbose end-to-end test runs
 

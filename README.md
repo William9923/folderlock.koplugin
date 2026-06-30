@@ -30,7 +30,7 @@ folderlock.koplugin is designed to be a privacy barrier, not a software fortress
 - Parent locks cascade to subfolders automatically
 - **Lock/unlock via long-press** — lock or unlock any folder directly from FileManager's long-press context menu; no need to open the main menu
 - **Auto-update** — check for and install new versions from inside KOReader (**Folder Lock → Check for updates**)
-- **Cover Cache Isolation** — hides covers, metadata, reading-progress marks, opened/bold status, and long-press Book Information for files inside locked folders in CoverBrowser-based lists (File Manager, History, Collections, File Search). Information becomes visible again after you unlock and enter the folder.
+- **Cover Cache Isolation** — hides real covers, metadata, reading-progress marks, opened/bold status, and long-press Book Information for files inside locked folders in CoverBrowser-based lists (File Manager, History, Collections, File Search). Locked items display a default lock cover image (mosaic view) or the cover with a "Locked" title (list view). Information becomes visible again after you unlock and enter the folder.
 - **File-level access protection** — opening a book that lives inside a locked folder from History, Collections, File Search, or another folder prompts for the folder password before the book opens.
 
 ## Installation
