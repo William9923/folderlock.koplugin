@@ -7,19 +7,35 @@ local UIManager = require("ui/uimanager")
 local InfoMessage = require("ui/widget/infomessage")
 local InputDialog = require("ui/widget/inputdialog")
 local FileChooser = require("ui/widget/filechooser")
+local DocumentRegistry = require("document/documentregistry")
+local FileManagerHistory = require("apps/filemanager/filemanagerhistory")
+local FileManagerCollection = require("apps/filemanager/filemanagercollection")
+local FileSearcher = require("apps/filemanager/filemanagerfilesearcher")
 local FolderLockCore = require("lib/folderlock_core")
+local ReaderUI = nil -- lazy-loaded in install_readerui_patches
 local FolderLockCacheIsolation = require("lib/folderlock_cache_isolation")
 local _ = require("gettext")
 
 local FolderLockGuard = {}
 
+local default_on_denied = function()
+	UIManager:show(InfoMessage:new({
+		text = _("Access Denied"),
+		timeout = 2,
+	}))
+end
+
 -- single-use unlock token table
 local _allow_once = {}
 
---- Clear all tokens (testing / reset).
-function FolderLockGuard._reset()
-	_allow_once = {}
-end
+-- FileChooser patch state
+local _filechooser_patch_installed = false
+
+-- List source patch state
+local _list_patches_installed = false
+
+-- ReaderUI patch state
+local _readerui_patches_installed = false
 
 --- Set a single-use unlock token for the normalized path.
 function FolderLockGuard.allow_once(path)
@@ -64,7 +80,7 @@ end
 
 --- If `path` is inside a locked tree, show a password dialog.
 --- On correct password (or if already unlocked) call `on_allowed`.
---- On Cancel call `on_denied` (if provided).
+--- On Cancel call `on_denied` (optional. if not provided use default_on_denied).
 function FolderLockGuard.prompt_unlock_or_block(path, on_allowed, on_denied)
 	local real_path = FolderLockCore.normalize_path(path)
 	if not real_path then
@@ -97,6 +113,8 @@ function FolderLockGuard.prompt_unlock_or_block(path, on_allowed, on_denied)
 						UIManager:close(dialog)
 						if on_denied then
 							on_denied()
+						else
+							default_on_denied()
 						end
 					end,
 				},
@@ -142,9 +160,6 @@ end
 
 -- ── FileChooser.changeToPath patch ──
 
-local _filechooser_patch_installed = false
-local _orig_FileChooser_changeToPath = nil
-
 function FolderLockGuard.install_ensure_filechooser_patch()
 	if _filechooser_patch_installed then
 		return
@@ -154,55 +169,203 @@ function FolderLockGuard.install_ensure_filechooser_patch()
 		return
 	end
 
-	_orig_FileChooser_changeToPath = FileChooser.changeToPath
+	-- Capture the original in a local so a later reset/re-patch cannot make
+	-- this closure recurse into itself (Lua closures capture the variable,
+	-- not the value, so a module-level upvalue that gets reassigned is unsafe).
+	local orig_FileChooser_changeToPath = FileChooser.changeToPath
 
 	FileChooser.changeToPath = function(self_fc, path, focused_path)
 		local chooser_name = self_fc and self_fc.name or "nil"
 
 		if chooser_name ~= "filemanager" then
-			return _orig_FileChooser_changeToPath(self_fc, path, focused_path)
+			return orig_FileChooser_changeToPath(self_fc, path, focused_path)
 		end
 
 		local real_path = FolderLockCore.normalize_path(path)
 		if not real_path then
-			return _orig_FileChooser_changeToPath(self_fc, path, focused_path)
+			return orig_FileChooser_changeToPath(self_fc, path, focused_path)
 		end
 
 		-- Consume a pre-authorized unlock token (set by File Search folder result)
 		if FolderLockGuard.consume_once(real_path) then
 			return FolderLockCacheIsolation.with_context(real_path, function()
-				return _orig_FileChooser_changeToPath(self_fc, path, focused_path)
+				return orig_FileChooser_changeToPath(self_fc, path, focused_path)
 			end)
 		end
 
 		local locked_path = FolderLockCore.check_folder_lock(real_path)
 		if not locked_path then
 			return FolderLockCacheIsolation.with_context(real_path, function()
-				return _orig_FileChooser_changeToPath(self_fc, path, focused_path)
+				return orig_FileChooser_changeToPath(self_fc, path, focused_path)
 			end)
 		end
 
-		FolderLockGuard.prompt_unlock_or_block(real_path,
-			function()
-				FolderLockCacheIsolation.with_context(real_path, function()
-					_orig_FileChooser_changeToPath(self_fc, path, focused_path)
-				end)
-			end,
-			function()
-				UIManager:show(InfoMessage:new{
-					text = _("Access Denied"),
-					timeout = 2,
-				})
-			end
-		)
+		FolderLockGuard.prompt_unlock_or_block(real_path, function()
+			FolderLockCacheIsolation.with_context(real_path, function()
+				orig_FileChooser_changeToPath(self_fc, path, focused_path)
+			end)
+		end)
 	end
 
 	_filechooser_patch_installed = true
 end
 
+-- ── List source patches (History, Collection, File Search) ──
+
+function FolderLockGuard.install_list_source_patches()
+	if _list_patches_installed then
+		return
+	end
+
+	-- History
+	do
+		local orig = FileManagerHistory.onMenuSelect
+		FileManagerHistory.onMenuSelect = function(self, item)
+			FolderLockGuard.prompt_unlock_or_block(item.file, function()
+				FolderLockGuard.with_unlock_token(item.file, function()
+					orig(self, item)
+				end)
+			end)
+		end
+	end
+
+	-- Collection / Favorites
+	do
+		local orig = FileManagerCollection.onMenuSelect
+		FileManagerCollection.onMenuSelect = function(self, item)
+			if self._manager.selected_files then
+				return orig(self, item)
+			end
+			FolderLockGuard.prompt_unlock_or_block(item.file, function()
+				FolderLockGuard.with_unlock_token(item.file, function()
+					orig(self, item)
+				end)
+			end)
+		end
+	end
+
+	-- File Search
+	do
+		local orig = FileSearcher.onMenuSelect
+		FileSearcher.onMenuSelect = function(self, item)
+			if lfs.attributes(item.path) == nil then
+				return
+			end
+			if self._manager.selected_files then
+				return orig(self, item)
+			end
+
+			local function guarded()
+				FolderLockGuard.with_unlock_token(item.path, function()
+					orig(self, item)
+				end)
+			end
+
+			if item.is_file then
+				if DocumentRegistry:hasProvider(item.path, nil, true) then
+					FolderLockGuard.prompt_unlock_or_block(item.path, guarded)
+				end
+			else
+				if FolderLockCore.check_folder_lock(item.path) then
+					FolderLockGuard.prompt_unlock_or_block(item.path, guarded)
+				else
+					orig(self, item)
+				end
+			end
+		end
+	end
+
+	_list_patches_installed = true
+end
+
+-- ── ReaderUI.showReader / switchDocument patches ──
+
+function FolderLockGuard.install_readerui_patches()
+	if not ReaderUI then
+		ReaderUI = require("apps/reader/readerui")
+	end
+	if _readerui_patches_installed then
+		return
+	end
+
+	if type(ReaderUI.showReader) ~= "function" or type(ReaderUI.switchDocument) ~= "function" then
+		return
+	end
+
+	local orig_showReader = ReaderUI.showReader
+	-- Patch showReader in ReaderUI
+	ReaderUI.showReader = function(self, file, provider, seamless, is_provider_forced, after_open_callback)
+		-- Token set by a list-source pre-guard (History, Collection, File Search)
+		if FolderLockGuard.consume_once(file) then
+			return orig_showReader(self, file, provider, seamless, is_provider_forced, after_open_callback)
+		end
+
+		-- Re-opening the current document -> skip
+		local function is_current()
+			return self.document
+				and self.document.file
+				and FolderLockCore.normalize_path(self.document.file) == FolderLockCore.normalize_path(file)
+		end
+
+		if is_current() then
+			return orig_showReader(self, file, provider, seamless, is_provider_forced, after_open_callback)
+		end
+
+		-- Not inside a locked tree -> allow
+		if not FolderLockCore.check_folder_lock(file) then
+			return orig_showReader(self, file, provider, seamless, is_provider_forced, after_open_callback)
+		end
+
+		-- Inside a locked tree -> prompt
+		FolderLockGuard.prompt_unlock_or_block(file, function()
+			orig_showReader(self, file, provider, seamless, is_provider_forced, after_open_callback)
+		end)
+	end
+
+	local orig_switchDocument = ReaderUI.switchDocument
+	-- Patch switchDocument in ReaderUI
+	ReaderUI.switchDocument = function(self, new_file, seamless, after_open_callback)
+		if not new_file then
+			return
+		end
+
+		-- Token is set (list source) -- peek so showReader can consume it
+		if FolderLockGuard.peek_once(new_file) then
+			return orig_switchDocument(self, new_file, seamless, after_open_callback)
+		end
+
+		-- Re-opening the current document -> skip
+		local function is_current()
+			return self.document
+				and self.document.file
+				and FolderLockCore.normalize_path(self.document.file) == FolderLockCore.normalize_path(new_file)
+		end
+
+		if is_current() then
+			return orig_switchDocument(self, new_file, seamless, after_open_callback)
+		end
+
+		-- Not inside a locked tree -> allow
+		if not FolderLockCore.check_folder_lock(new_file) then
+			return orig_switchDocument(self, new_file, seamless, after_open_callback)
+		end
+
+		-- Inside a locked tree -> prompt, then set token for showReader to consume
+		FolderLockGuard.prompt_unlock_or_block(new_file, function()
+			FolderLockGuard.with_unlock_token(new_file, function()
+				orig_switchDocument(self, new_file, seamless, after_open_callback)
+			end)
+		end)
+	end
+
+	_readerui_patches_installed = true
+end
+
 --- Install all file-open interception patches (call from plugin init).
 function FolderLockGuard.install()
 	FolderLockGuard.install_ensure_filechooser_patch()
+	FolderLockGuard.install_list_source_patches()
+	FolderLockGuard.install_readerui_patches()
 end
 
 return FolderLockGuard

@@ -30,9 +30,22 @@ local function fresh_guard(opts)
 	package.loaded["ui/widget/filechooser"] = {
 		changeToPath = function() return "original" end,
 	}
+	package.loaded["document/documentregistry"] = {
+		hasProvider = function() return true end,
+	}
+	package.loaded["apps/filemanager/filemanagerhistory"] = {
+		onMenuSelect = function(self, item) end,
+	}
+	package.loaded["apps/filemanager/filemanagercollection"] = {
+		onMenuSelect = function(self, item) end,
+	}
+	package.loaded["apps/filemanager/filemanagerfilesearcher"] = {
+		onMenuSelect = function(self, item) end,
+	}
 
 	-- FolderLockCore mock
 	package.loaded["lib/folderlock_core"] = {
+		load_registry = function() end,
 		normalize_path = function(p) return p or nil end,
 		djb2_hash = function(s) return tostring(#s) end,
 		check_folder_lock = function(p)
@@ -270,6 +283,247 @@ t.test("install_ensure_filechooser_patch is idempotent", function()
 	local patched = FC.changeToPath
 	Guard.install_ensure_filechooser_patch()
 	eq(FC.changeToPath, patched, "second call should not re-patch")
+end)
+
+t.test("install_ensure_filechooser_patch survives _reset and re-install", function()
+	local Guard = fresh_guard()
+	local FC = require("ui/widget/filechooser")
+	Guard.install_ensure_filechooser_patch()
+	Guard._reset()
+	Guard.install_ensure_filechooser_patch()
+	-- Must not recurse: the patched function should still delegate to the mock original.
+	local ok, result = pcall(FC.changeToPath, { name = "filemanager" }, "/open")
+	eq(ok, true, "double install after _reset should not cause stack overflow")
+	eq(result, "original", "should delegate to original changeToPath")
+end)
+
+t.test("install does not double-patch on repeated calls", function()
+	local Guard = fresh_guard()
+	local FC = require("ui/widget/filechooser")
+	Guard.install()
+	local patched = FC.changeToPath
+	Guard.install()
+	eq(FC.changeToPath, patched, "second install should not re-patch changeToPath")
+	local ok, result = pcall(FC.changeToPath, { name = "filemanager" }, "/open")
+	eq(ok, true, "repeated install should not cause stack overflow")
+	eq(result, "original", "should still delegate to original changeToPath")
+end)
+
+-- ── install_list_source_patches ──
+
+t.test("install_list_source_patches replaces History.onMenuSelect", function()
+	local Guard = fresh_guard()
+	local H = require("apps/filemanager/filemanagerhistory")
+	local before = H.onMenuSelect
+	Guard.install_list_source_patches()
+	eq(H.onMenuSelect ~= before, true, "History.onMenuSelect should be replaced")
+end)
+
+t.test("install_list_source_patches replaces Collection.onMenuSelect", function()
+	local Guard = fresh_guard()
+	local C = require("apps/filemanager/filemanagercollection")
+	local before = C.onMenuSelect
+	Guard.install_list_source_patches()
+	eq(C.onMenuSelect ~= before, true, "Collection.onMenuSelect should be replaced")
+end)
+
+t.test("install_list_source_patches replaces FileSearcher.onMenuSelect", function()
+	local Guard = fresh_guard()
+	local S = require("apps/filemanager/filemanagerfilesearcher")
+	local before = S.onMenuSelect
+	Guard.install_list_source_patches()
+	eq(S.onMenuSelect ~= before, true, "FileSearcher.onMenuSelect should be replaced")
+end)
+
+t.test("install_list_source_patches is idempotent", function()
+	local Guard = fresh_guard()
+	local H = require("apps/filemanager/filemanagerhistory")
+	Guard.install_list_source_patches()
+	local patched = H.onMenuSelect
+	Guard.install_list_source_patches()
+	eq(H.onMenuSelect, patched, "second call should not re-patch")
+end)
+
+-- ── install_readerui_patches ──
+
+t.test("install_readerui_patches replaces ReaderUI.showReader and ReaderUI.switchDocument", function()
+	local Guard = fresh_guard()
+	local called_sr = false
+	local called_sw = false
+	package.loaded["apps/reader/readerui"] = {
+		showReader = function(self, file, ...) called_sr = true end,
+		switchDocument = function(self, new_file, ...) called_sw = true end,
+	}
+	Guard.install_readerui_patches()
+	local RU = require("apps/reader/readerui")
+	local reader_self = { document = { file = "/some/file" } }
+	RU.showReader(reader_self, "/some/file")
+	eq(called_sr, true, "showReader should call through")
+	called_sr = false
+	local reader_self2 = { document = { file = "/other/file" } }
+	RU.switchDocument(reader_self2, "/other/file")
+	eq(called_sw, true, "switchDocument should call through")
+end)
+
+t.test("install_readerui_patches is idempotent", function()
+	local Guard = fresh_guard()
+	package.loaded["apps/reader/readerui"] = {
+		showReader = function() end,
+		switchDocument = function() end,
+	}
+	Guard.install_readerui_patches()
+	local RU = require("apps/reader/readerui")
+	local patched_sr = RU.showReader
+	local patched_sw = RU.switchDocument
+	Guard.install_readerui_patches()
+	eq(RU.showReader, patched_sr, "showReader should not be re-patched")
+	eq(RU.switchDocument, patched_sw, "switchDocument should not be re-patched")
+end)
+
+t.test("showReader consumes token and bypasses prompt for locked file", function()
+	local Guard, state = fresh_guard({locked = true})
+	local orig_called = false
+	package.loaded["apps/reader/readerui"] = {
+		showReader = function(self, file, ...) orig_called = true end,
+		switchDocument = function() end,
+	}
+	Guard.install_readerui_patches()
+	local RU = require("apps/reader/readerui")
+	Guard.allow_once("/locked/file")
+	RU.showReader(nil, "/locked/file")
+	eq(orig_called, true, "should call through when token is set")
+	eq(state.dialog, nil, "should not create password dialog")
+	-- Token should be consumed
+	eq(Guard.peek_once("/locked/file"), false, "token should be consumed")
+end)
+
+t.test("showReader skips prompt for current file", function()
+	local Guard, state = fresh_guard({locked = true})
+	local orig_called = false
+	local current_file = "/current/doc.pdf"
+	package.loaded["apps/reader/readerui"] = {
+		showReader = function(self, file, ...) orig_called = true end,
+		switchDocument = function() end,
+	}
+	Guard.install_readerui_patches()
+	local RU = require("apps/reader/readerui")
+	local reader_self = {
+		document = { file = current_file },
+	}
+	RU.showReader(reader_self, current_file)
+	eq(orig_called, true, "should call through for current file")
+	eq(state.dialog, nil, "should not create dialog")
+end)
+
+t.test("showReader prompts for locked file without token", function()
+	local Guard, state = fresh_guard({locked = true})
+	local orig_called = false
+	package.loaded["apps/reader/readerui"] = {
+		showReader = function(self, file, ...) orig_called = true end,
+		switchDocument = function() end,
+	}
+	Guard.install_readerui_patches()
+	local RU = require("apps/reader/readerui")
+	local reader_self = {
+		document = { file = "/other/file" },
+	}
+	RU.showReader(reader_self, "/locked/file")
+	eq(orig_called, false, "should NOT call through yet")
+	eq(state.dialog ~= nil, true, "should create password dialog")
+end)
+
+t.test("showReader allows unlocked file without prompt", function()
+	local Guard, state = fresh_guard() -- not locked
+	local orig_called = false
+	package.loaded["apps/reader/readerui"] = {
+		showReader = function(self, file, ...) orig_called = true end,
+		switchDocument = function() end,
+	}
+	Guard.install_readerui_patches()
+	local RU = require("apps/reader/readerui")
+	local reader_self = { document = { file = "/other/file" } }
+	RU.showReader(reader_self, "/unlocked/file")
+	eq(orig_called, true, "should call through for unlocked file")
+	eq(state.dialog, nil, "should not create dialog")
+end)
+
+t.test("switchDocument peeks token and bypasses prompt for locked file", function()
+	local Guard, state = fresh_guard({locked = true})
+	local orig_called = false
+	package.loaded["apps/reader/readerui"] = {
+		showReader = function() end,
+		switchDocument = function(self, new_file, ...) orig_called = true end,
+	}
+	Guard.install_readerui_patches()
+	local RU = require("apps/reader/readerui")
+	Guard.allow_once("/locked/file")
+	RU.switchDocument(nil, "/locked/file")
+	eq(orig_called, true, "should call through when token is set")
+	eq(state.dialog, nil, "should not create password dialog")
+	-- Token should still exist (peeked, not consumed)
+	eq(Guard.peek_once("/locked/file"), true, "token should not be consumed")
+end)
+
+t.test("switchDocument prompts for locked file without token", function()
+	local Guard, state = fresh_guard({locked = true})
+	local orig_called = false
+	package.loaded["apps/reader/readerui"] = {
+		showReader = function() end,
+		switchDocument = function(self, new_file, ...) orig_called = true end,
+	}
+	Guard.install_readerui_patches()
+	local RU = require("apps/reader/readerui")
+	local reader_self = {
+		document = { file = "/other/file" },
+	}
+	RU.switchDocument(reader_self, "/locked/file")
+	eq(orig_called, false, "should NOT call through yet")
+	eq(state.dialog ~= nil, true, "should create password dialog")
+end)
+
+t.test("switchDocument allows unlocked file without prompt", function()
+	local Guard, state = fresh_guard() -- not locked
+	local orig_called = false
+	package.loaded["apps/reader/readerui"] = {
+		showReader = function() end,
+		switchDocument = function(self, new_file, ...) orig_called = true end,
+	}
+	Guard.install_readerui_patches()
+	local RU = require("apps/reader/readerui")
+	local reader_self = { document = { file = "/other/file" } }
+	RU.switchDocument(reader_self, "/unlocked/file")
+	eq(orig_called, true, "should call through for unlocked file")
+	eq(state.dialog, nil, "should not create dialog")
+end)
+
+t.test("switchDocument skips prompt for current file", function()
+	local Guard = fresh_guard({locked = true})
+	local orig_called = false
+	local current_file = "/current/doc.pdf"
+	package.loaded["apps/reader/readerui"] = {
+		showReader = function() end,
+		switchDocument = function(self, new_file, ...) orig_called = true end,
+	}
+	Guard.install_readerui_patches()
+	local RU = require("apps/reader/readerui")
+	local reader_self = {
+		document = { file = current_file },
+	}
+	RU.switchDocument(reader_self, current_file)
+	eq(orig_called, true, "should call through for current file")
+end)
+
+t.test("switchDocument returns early for nil new_file", function()
+	local Guard = fresh_guard()
+	local orig_called = false
+	package.loaded["apps/reader/readerui"] = {
+		showReader = function() end,
+		switchDocument = function(self, new_file, ...) orig_called = true end,
+	}
+	Guard.install_readerui_patches()
+	local RU = require("apps/reader/readerui")
+	RU.switchDocument(nil, nil)
+	eq(orig_called, false, "should NOT call through for nil new_file")
 end)
 
 t.done()
