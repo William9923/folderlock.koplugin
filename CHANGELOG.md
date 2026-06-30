@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha] - 2026-06-30
+
 ### Added
 
 - **Default locked cover image** — locked files in CoverBrowser mosaic and list views display a bundled cover image instead of a generic "Locked" label; list view shows the cover on the left with "Locked" as the title
@@ -99,6 +101,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Set `LD_LIBRARY_PATH` for cmake SDL3 try_run in CI
 
+[0.4.0-alpha]: https://github.com/William9923/folderlock.koplugin/releases/tag/0.4.0-alpha
 [0.2.1]: https://github.com/William9923/folderlock.koplugin/releases/tag/0.2.1
 [0.2.0]: https://github.com/William9923/folderlock.koplugin/releases/tag/0.2.0
 [0.1.0]: https://github.com/William9923/folderlock.koplugin/releases/tag/0.1.0
