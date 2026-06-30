@@ -297,7 +297,7 @@ function FolderLockGuard.install_readerui_patches()
 	-- A locked file is "visible" (not hidden) exactly when we are browsing
 	-- inside the locked tree that contains it.
 	local function is_inside_current_locked_tree(file)
-		return not FolderLockCacheIsolation.is_hidden_path(file) and FolderLockCore.check_folder_lock(file) ~= nil
+		return not FolderLockCacheIsolation.is_hidden_path(file)
 	end
 
 	local orig_showReader = ReaderUI.showReader
