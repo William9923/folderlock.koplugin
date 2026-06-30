@@ -39,15 +39,20 @@ local function is_inside(child, parent)
 end
 
 -- Determine if filepath's book info should be hidden right now.
-local function is_hidden_path(filepath)
+local function is_hidden_path(filepath, current_folder)
 	local locked_path = FolderLockCore.check_folder_lock(filepath)
 	if not locked_path then
 		return false
 	end
-	local current = FolderLockCacheIsolation.get_current_path()
-	if current and is_inside(current, locked_path) then
-		return false
+
+	local current = current_folder
+	if current == nil then
+		current = FolderLockCacheIsolation.get_current_path()
 	end
+	if current then
+		return not is_inside(current, locked_path)
+	end
+
 	return true
 end
 

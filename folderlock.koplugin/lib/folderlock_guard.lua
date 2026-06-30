@@ -8,6 +8,7 @@ local InfoMessage = require("ui/widget/infomessage")
 local InputDialog = require("ui/widget/inputdialog")
 local FileChooser = require("ui/widget/filechooser")
 local DocumentRegistry = require("document/documentregistry")
+local FileManager = require("apps/filemanager/filemanager")
 local FileManagerHistory = require("apps/filemanager/filemanagerhistory")
 local FileManagerCollection = require("apps/filemanager/filemanagercollection")
 local FileSearcher = require("apps/filemanager/filemanagerfilesearcher")
@@ -29,8 +30,11 @@ end
 local _allow_once = {}
 
 -- FileChooser patch state: keep a reference to the wrapper so we can tell
--- whether an external reset (e.g. test teardown) removed it.
 local _filechooser_patch_wrapper = nil
+
+-- ReaderUI patch state: keep a reference to the wrapper so we can tell
+local _readerui_showReader_patch_wrapper = nil
+local _readerui_switchDocument_patch_wrapper = nil
 
 -- List source patch state
 local _list_patches_installed = false
@@ -294,10 +298,22 @@ function FolderLockGuard.install_readerui_patches()
 		return
 	end
 
+	-- idempotent patch check
+	if
+		(_readerui_showReader_patch_wrapper and ReaderUI.showReader == _readerui_showReader_patch_wrapper)
+		and (
+			_readerui_switchDocument_patch_wrapper
+			and ReaderUI.switchDocument == _readerui_switchDocument_patch_wrapper
+		)
+	then
+		return
+	end
+
 	-- A locked file is "visible" (not hidden) exactly when we are browsing
 	-- inside the locked tree that contains it.
 	local function is_inside_current_locked_tree(file)
-		return not FolderLockCacheIsolation.is_hidden_path(file)
+		local folder_path = FileManager.instance.file_chooser.path
+		return not FolderLockCacheIsolation.is_hidden_path(file, folder_path)
 	end
 
 	local orig_showReader = ReaderUI.showReader
@@ -319,13 +335,17 @@ function FolderLockGuard.install_readerui_patches()
 			return orig_showReader(self, file, provider, seamless, is_provider_forced, after_open_callback)
 		end
 
+		local normalized_path = FolderLockCore.normalize_path(file)
+		print("[FOLDERLOCK]:" .. normalized_path)
+		print("[FOLDERLOCK] is_inside_current_locked_tree:", is_inside_current_locked_tree(normalized_path))
+
 		-- Already browsing inside the locked tree that contains this file -> allow
-		if is_inside_current_locked_tree(file) then
+		if is_inside_current_locked_tree(normalized_path) then
 			return orig_showReader(self, file, provider, seamless, is_provider_forced, after_open_callback)
 		end
 
 		-- Not inside a locked tree -> allow
-		if not FolderLockCore.check_folder_lock(file) then
+		if not FolderLockCore.check_folder_lock(normalized_path) then
 			return orig_showReader(self, file, provider, seamless, is_provider_forced, after_open_callback)
 		end
 
@@ -376,7 +396,8 @@ function FolderLockGuard.install_readerui_patches()
 		end)
 	end
 
-	_readerui_patches_installed = true
+	_readerui_showReader_patch_wrapper = ReaderUI.showReader
+	_readerui_switchDocument_patch_wrapper = ReaderUI.switchDocument
 end
 
 --- Install all file-open interception patches (call from plugin init).
