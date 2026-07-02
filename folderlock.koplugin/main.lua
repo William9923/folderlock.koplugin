@@ -4,6 +4,7 @@ Plugin that protect folders in KOReader with passwords via a lock registry saved
 --]]
 --
 --
+local lfs = require("libs/libkoreader-lfs")
 local util = require("util")
 local LuaSettings = require("luasettings")
 local InfoMessage = require("ui/widget/infomessage")
@@ -23,7 +24,7 @@ local _is_filechooser_patched = false
 local _is_filemanagerutil_patched = false
 local _registry_name = "locks"
 
-local _default_on_denied = function()
+local _defaultOnDenied = function()
 	UIManager:show(InfoMessage:new({
 		text = _("Access Denied"),
 		timeout = 2,
@@ -66,7 +67,7 @@ end
 -- Example:
 --  - /a/b/c: {"/a/b/c", "/a/b", "/a", "/"}
 --  - /a/b: {"/a/b", "/a", "/"}
-local function generate_path_ancestors(path)
+local function generatePathAncestors(path)
 	local ancestors = {}
 	if not path or path == "" then
 		return ancestors
@@ -96,7 +97,7 @@ function FolderLock:checkFolderLock(path)
 		return nil
 	end
 
-	local ancestors = generate_path_ancestors(normalized)
+	local ancestors = generatePathAncestors(normalized)
 	for _, ancestor_path in ipairs(ancestors) do
 		if self.registry[ancestor_path] then
 			return ancestor_path
@@ -107,7 +108,7 @@ function FolderLock:checkFolderLock(path)
 end
 
 -- Check if `current` path is inside (or equal to) `parent` locked folder
-function FolderLock:is_path_inside(current, parent)
+function FolderLock:isPathInside(current, parent)
 	if not current or not parent then
 		return false
 	end
@@ -125,7 +126,7 @@ end
 --- If `path` is inside a locked tree, show a password dialog.
 --- On correct password (or if already unlocked) call `on_allowed`.
 --- On Cancel call `on_denied`.
-function FolderLock:prompt_unlock_or_block(locked_path, on_allowed, on_denied)
+function FolderLock:promptUnlockOrBlock(locked_path, on_allowed, on_denied)
 	assert(on_allowed ~= nil, "on_allowed callback must exist")
 	assert(on_denied ~= nil, "on_denied callback must exist")
 
@@ -182,8 +183,26 @@ function FolderLock:prompt_unlock_or_block(locked_path, on_allowed, on_denied)
 	dialog:onShowKeyboard()
 end
 
--- remove lock
--- add new lock
+function FolderLock:removeLock(path)
+	return self:setLock(path, nil)
+end
+function FolderLock:addLock(path, raw_pwd)
+	return self:setLock(path, self.hasher.hash(raw_pwd))
+end
+
+function FolderLock:setLock(path, pwd)
+	local normalized = self.hasher.normalize(path)
+	if not normalized then
+		return false
+	end
+	if self.registry == nil then
+		self:loadLocksRegistry()
+	end
+
+	self.registry[normalized] = pwd
+	self:saveLocksRegistry()
+	return true
+end
 
 -- Patching FileChooser.changeToPath
 function FolderLock:patchFileChooser()
@@ -195,15 +214,14 @@ function FolderLock:patchFileChooser()
 		local orig_changeToPath = FileChooser.changeToPath
 
 		FileChooser.changeToPath = function(self_fc, path, focused_path)
-			print("[FOLDERLOCK] onPrePathChanged event", path, focused_path)
 
 			local real_path = self.hasher.normalize(path)
 			local locked_path = self:checkFolderLock(real_path)
 
 			if locked_path ~= nil then
-				self:prompt_unlock_or_block(path, function()
+				self:promptUnlockOrBlock(path, function()
 					orig_changeToPath(self_fc, path, focused_path)
-				end, _default_on_denied)
+				end, _defaultOnDenied)
 			else
 				orig_changeToPath(self_fc, path, focused_path)
 			end
@@ -224,15 +242,14 @@ function FolderLock:patchFileManagerUtil()
 
 		FileManagerUtil.openFile = function(ui, file, caller_pre_callback, no_dialog)
 			local path, filename = util.splitFilePathName(file)
-			print("[FOLDERLOCK] onPreOpenFile event", path, filename)
 			local real_path = self.hasher.normalize(path)
 			local locked_path = self:checkFolderLock(real_path)
 
 			-- only prompt if approaching the locked folder from outside
-			if locked_path ~= nil and not self:is_path_inside(ui.file_chooser.path, locked_path) then
-				self:prompt_unlock_or_block(path, function()
+			if locked_path ~= nil and not self:isPathInside(ui.file_chooser.path, locked_path) then
+				self:promptUnlockOrBlock(path, function()
 					orig_openFile(ui, file, caller_pre_callback, no_dialog)
-				end, _default_on_denied)
+				end, _defaultOnDenied)
 			else
 				orig_openFile(ui, file, caller_pre_callback, no_dialog)
 			end
@@ -254,27 +271,199 @@ function FolderLock:getSubMenuItems()
 			end,
 		},
 		-- TODO: setup menu
+		-- 1. setting up master password
+		-- 2. opening menu for managing all folder locks
 
 		-- Version submenu
 		table.unpack(FolderLockUpdater.addSubMenu()),
 	}
 end
 
+-- Lock Management logic
+function FolderLock:promptLockFolderDialog(path, on_success)
+	assert(on_success ~= nil, "on_success callback must exist")
+
+	local pw_dialog
+	pw_dialog = InputDialog:new({
+		title = _("Lock folder"),
+		description = path,
+		text_type = "password",
+		input_hint = _("Enter password"),
+		buttons = {
+			{
+				{
+					text = _("Cancel"),
+					id = "close",
+					callback = function()
+						UIManager:close(pw_dialog)
+					end,
+				},
+				{
+					text = _("Next"),
+					is_enter_default = true,
+					callback = function()
+						local pw1 = pw_dialog:getInputText()
+						if pw1 == "" then
+							UIManager:show(InfoMessage:new({
+								text = _("Password cannot be empty"),
+								timeout = 2,
+							}))
+							return
+						end
+						UIManager:close(pw_dialog)
+
+						local confirm_dialog
+						confirm_dialog = InputDialog:new({
+							title = _("Confirm password"),
+							text_type = "password",
+							input_hint = _("Re-enter password"),
+							buttons = {
+								{
+									{
+										text = _("Cancel"),
+										id = "close",
+										callback = function()
+											UIManager:close(confirm_dialog)
+										end,
+									},
+									{
+										text = _("Lock"),
+										is_enter_default = true,
+										callback = function()
+											local pw2 = confirm_dialog:getInputText()
+											if pw1 ~= pw2 then
+												UIManager:show(InfoMessage:new({
+													text = _("Password does not match"),
+													timeout = 2,
+												}))
+												UIManager:close(confirm_dialog)
+												return
+											end
+											UIManager:close(confirm_dialog)
+											local ok = self:addLock(path, pw1)
+											if not ok then
+												UIManager:show(InfoMessage:new({
+													text = _("Failed to lock folder"),
+													timeout = 2,
+												}))
+												return
+											end
+
+											on_success()
+
+											UIManager:show(InfoMessage:new({
+												text = _("Folder locked"),
+												timeout = 2,
+											}))
+										end,
+									},
+								},
+							},
+						})
+						UIManager:show(confirm_dialog)
+						confirm_dialog:onShowKeyboard()
+					end,
+				},
+			},
+		},
+	})
+	UIManager:show(pw_dialog)
+	pw_dialog:onShowKeyboard()
+end
+
+function FolderLock:promptUnlockFolderDialog(path, on_success)
+	assert(on_success ~= nil, "on_success callback must exist")
+
+	local unlock_dialog
+	unlock_dialog = InputDialog:new({
+		title = _("Unlock folder"),
+		description = path,
+		text_type = "password",
+		input_hint = _("Enter current password"),
+		buttons = {
+			{
+				{
+					text = _("Cancel"),
+					id = "close",
+					callback = function()
+						UIManager:close(unlock_dialog)
+					end,
+				},
+				{
+					text = _("Unlock"),
+					is_enter_default = true,
+					callback = function()
+						local input = unlock_dialog:getInputText()
+						local hash = self.hasher.hash(input)
+						local stored = self:retrieveLockedFolderKey(path)
+						if hash ~= stored then
+							-- TODO: implement max attempt
+							UIManager:show(InfoMessage:new({
+								text = _("Incorrect password"),
+								timeout = 2,
+							}))
+							return
+						end
+						UIManager:close(unlock_dialog)
+						local ok = self:removeLock(path)
+						if not ok then
+							UIManager:show(InfoMessage:new({
+								text = _("Failed to remove lock"),
+								timeout = 2,
+							}))
+							return
+						end
+						on_success()
+						UIManager:show(InfoMessage:new({
+							text = _("Folder lock removed"),
+							timeout = 2,
+						}))
+					end,
+				},
+			},
+		},
+	})
+	UIManager:show(unlock_dialog)
+	unlock_dialog:onShowKeyboard()
+end
+
 function FolderLock:registerFileDialogMenu()
 	FileManager.addFileDialogButtons(self.ui, "folderlock", function(file, is_file)
-		if is_file then
+		local is_directory = lfs.attributes(file, "mode") == "directory"
+		if is_file or not is_directory then
 			return nil
 		end
 
-		return {
-			{
-				text = _("Lock folder"),
-				callback = function()
-					print("[FOLDERLOCK] Lock Folder event clicked")
-					-- TODO: add lock dialog
-				end,
-			},
-		}
+		local normalizedPath = self.hasher.normalize(file)
+		if self.registry == nil then
+			return
+		end
+
+		if self.registry[normalizedPath] then
+			return {
+				{
+					text = _("Remove Lock"),
+					callback = function()
+						self:promptUnlockFolderDialog(normalizedPath, function()
+							UIManager:close(self.ui.file_chooser.file_dialog)
+							self.ui.file_chooser:refreshPath()
+						end)
+					end,
+				},
+			}
+		else
+			return {
+				{
+					text = _("Lock folder"),
+					callback = function()
+						self:promptLockFolderDialog(normalizedPath, function()
+							UIManager:close(self.ui.file_chooser.file_dialog)
+							self.ui.file_chooser:refreshPath()
+						end)
+					end,
+				},
+			}
+		end
 	end)
 end
 
@@ -291,10 +480,3 @@ function FolderLock:addToMainMenu(menu_items)
 end
 
 return FolderLock
-
--- TODO:
--- 1. Interaction is on Long Press folder only (to lock and unlock) -> unlock options should remain on the affected folder => DONE
--- 2. Lock should be applied simply on onPreOpenFile or onPreOpenFile events
--- OPTIONAL:
--- 3. Learn how does open next or previous documents work. And OpenLastDocument. it seems cannot be catched with our current patch
--- 4. Learn about module/menu in lua if possible. But if cannot then it's fine as it is. Reuse the versioning capabilities
