@@ -7,6 +7,7 @@ Plugin that protect folders in KOReader with passwords via a lock registry saved
 local util = require("util")
 local LuaSettings = require("luasettings")
 local InfoMessage = require("ui/widget/infomessage")
+local InputDialog = require("ui/widget/inputdialog")
 local UIManager = require("ui/uimanager")
 local WidgetContainer = require("ui/widget/container/widgetcontainer")
 local DataStorage = require("datastorage")
@@ -22,6 +23,13 @@ local _is_filechooser_patched = false
 local _is_filemanagerutil_patched = false
 local _registry_name = "locks"
 
+local _default_on_denied = function()
+	UIManager:show(InfoMessage:new({
+		text = _("Access Denied"),
+		timeout = 2,
+	}))
+end
+
 local FolderLock = WidgetContainer:extend({
 	name = "folderlock",
 	is_doc_only = false,
@@ -31,7 +39,7 @@ local FolderLock = WidgetContainer:extend({
 })
 
 function FolderLock:init()
-  self.hasher = FolderLockHasher
+	self.hasher = FolderLockHasher
 	self.loadLocksRegistry(self)
 
 	self.ui.menu:registerToMainMenu(self)
@@ -98,9 +106,80 @@ function FolderLock:checkFolderLock(path)
 	return nil
 end
 
+-- Check if `current` path is inside (or equal to) `parent` locked folder
+function FolderLock:is_path_inside(current, parent)
+	if not current or not parent then
+		return false
+	end
+	-- add trailing slash to avoid false match on /a vs /abc
+	local p = parent:match("/$") and parent or parent .. "/"
+	local c = current:match("/$") and current or current .. "/"
+	return c:sub(1, #p) == p
+end
+
 -- Retrieve key for unlocking the locked folder
 function FolderLock:retrieveLockedFolderKey(locked_folder_path)
 	return self.registry[locked_folder_path]
+end
+
+--- If `path` is inside a locked tree, show a password dialog.
+--- On correct password (or if already unlocked) call `on_allowed`.
+--- On Cancel call `on_denied`.
+function FolderLock:prompt_unlock_or_block(locked_path, on_allowed, on_denied)
+	assert(on_allowed ~= nil, "on_allowed callback must exist")
+	assert(on_denied ~= nil, "on_denied callback must exist")
+
+	-- locked: show password dialog
+	local dialog
+	dialog = InputDialog:new({
+		title = _("Folder Lock"),
+		text_type = "password",
+		input_hint = _("Enter password"),
+		buttons = {
+			{
+				{
+					text = _("Cancel"),
+					id = "close",
+					callback = function()
+						UIManager:close(dialog)
+						on_denied()
+					end,
+				},
+				{
+					text = _("Enter"),
+					is_enter_default = true,
+					callback = function()
+						local input = dialog:getInputText()
+						local hash = self.hasher.hash(input)
+						local stored = self:retrieveLockedFolderKey(locked_path)
+						if not stored then
+							-- NOTE: no stored hash (shouldn't happen), allow through
+							UIManager:close(dialog)
+							on_allowed()
+							return
+						end
+
+						if hash == stored then
+							UIManager:close(dialog)
+							on_allowed()
+							return
+						end
+
+						-- TODO: implement max attempt
+						UIManager:show(InfoMessage:new({
+							text = _("Incorrect password"),
+							timeout = 2,
+						}))
+						dialog:onClose()
+						UIManager:show(dialog)
+						dialog:onShowKeyboard()
+					end,
+				},
+			},
+		},
+	})
+	UIManager:show(dialog)
+	dialog:onShowKeyboard()
 end
 
 -- remove lock
@@ -117,11 +196,17 @@ function FolderLock:patchFileChooser()
 
 		FileChooser.changeToPath = function(self_fc, path, focused_path)
 			print("[FOLDERLOCK] onPrePathChanged event", path, focused_path)
-			-- TODO: check dialog
+
 			local real_path = self.hasher.normalize(path)
 			local locked_path = self:checkFolderLock(real_path)
-			print("[FOLDERLOCK] folder is on locked folder", locked_path)
-			orig_changeToPath(self_fc, path, focused_path)
+
+			if locked_path ~= nil then
+				self:prompt_unlock_or_block(path, function()
+					orig_changeToPath(self_fc, path, focused_path)
+				end, _default_on_denied)
+			else
+				orig_changeToPath(self_fc, path, focused_path)
+			end
 		end
 
 		_is_filechooser_patched = true
@@ -142,10 +227,15 @@ function FolderLock:patchFileManagerUtil()
 			print("[FOLDERLOCK] onPreOpenFile event", path, filename)
 			local real_path = self.hasher.normalize(path)
 			local locked_path = self:checkFolderLock(real_path)
-			print("[FOLDERLOCK] file is on locked folder", locked_path)
 
-			-- TODO: check dialog
-			orig_openFile(ui, file, caller_pre_callback, no_dialog)
+			-- only prompt if approaching the locked folder from outside
+			if locked_path ~= nil and not self:is_path_inside(ui.file_chooser.path, locked_path) then
+				self:prompt_unlock_or_block(path, function()
+					orig_openFile(ui, file, caller_pre_callback, no_dialog)
+				end, _default_on_denied)
+			else
+				orig_openFile(ui, file, caller_pre_callback, no_dialog)
+			end
 		end
 
 		_is_filemanagerutil_patched = true
