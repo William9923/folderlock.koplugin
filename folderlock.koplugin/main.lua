@@ -5,6 +5,7 @@ Plugin that protect folders in KOReader with passwords via a lock registry saved
 --
 --
 local util = require("util")
+local LuaSettings = require("luasettings")
 local InfoMessage = require("ui/widget/infomessage")
 local UIManager = require("ui/uimanager")
 local WidgetContainer = require("ui/widget/container/widgetcontainer")
@@ -14,23 +15,41 @@ local FileManager = require("apps/filemanager/filemanager")
 local FileManagerUtil = require("apps/filemanager/filemanagerutil")
 local _ = require("gettext")
 
-local FolderLockUpdater = require("lib/folderlock_updater")
+local FolderLockUpdater = require("util/folderlock_updater")
+local FolderLockHasher = require("util/folderlock_hasher")
 
 local _is_filechooser_patched = false
 local _is_filemanagerutil_patched = false
+local _registry_name = "locks"
 
 local FolderLock = WidgetContainer:extend({
 	name = "folderlock",
 	is_doc_only = false,
 	settings_file = DataStorage:getSettingsDir() .. "/folderlock_registry.lua",
+	settings = nil,
+	registry = nil,
 })
 
+-- Core logic
+
 function FolderLock:init()
+	-- self.loadLocksRegistry(self)
+
 	self.ui.menu:registerToMainMenu(self)
 	self.patchFileChooser(self)
 	self.patchFileManagerUtil(self)
 
 	self.registerFileDialogMenu(self)
+end
+
+function FolderLock:loadLocksRegistry()
+	self.settings = LuaSettings:open(self.settings_file)
+	self.registry = self.settings:readSetting(_registry_name) or {}
+end
+
+function FolderLock:saveLocksRegistry()
+	self.settings:saveSetting(_registry_name, self.registry)
+	self.settings:flush()
 end
 
 -- Patching FileChooser.changeToPath
@@ -81,7 +100,7 @@ function FolderLock:getSubMenuItems()
 				}))
 			end,
 		},
-    -- TODO: setup menu
+		-- TODO: setup menu
 
 		-- Version submenu
 		table.unpack(FolderLockUpdater.addSubMenu()),
