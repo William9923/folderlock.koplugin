@@ -22,7 +22,7 @@ trap 'rm -rf "$TMP_DIR"' EXIT
 
 mkdir -p "$OUT_DIR"
 cp -a "$PWD/folderlock.koplugin" "$TMP_DIR/"
-cat > "$TMP_DIR/folderlock.koplugin/lib/folderlock_version.lua" <<EOF
+cat > "$TMP_DIR/folderlock.koplugin/util/folderlock_version.lua" <<EOF
 local FolderLockVersion = {
     VERSION = "${VERSION}",
 }
