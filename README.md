@@ -24,13 +24,11 @@ folderlock.koplugin is designed to be a privacy barrier, not a software fortress
 
 ## Features
 
-- Lock any folder directly from KOReader's menu
-- Unlock a folder from the same menu
+- Lock any folder directly from FileManager's long-press context menu
+- Remove a folder lock from the same long-press menu
 - Password prompt when opening locked folders
 - Parent locks cascade to subfolders automatically
-- **Lock/unlock via long-press** — lock or unlock any folder directly from FileManager's long-press context menu; no need to open the main menu
 - **Auto-update** — check for and install new versions from inside KOReader (**Folder Lock → Check for updates**)
-- **Cover Cache Isolation** — hides real covers, metadata, reading-progress marks, opened/bold status, and long-press Book Information for files inside locked folders in CoverBrowser-based lists (File Manager, History, Collections, File Search). Locked items display a default lock cover image (mosaic view) or the cover with a "Locked" title (list view). Information becomes visible again after you unlock and enter the folder.
 - **File-level access protection** — opening a book that lives inside a locked folder from History, Collections, File Search, or another folder prompts for the folder password before the book opens.
 
 ## Installation
@@ -52,38 +50,19 @@ Once installed, you can update from inside KOReader:
 
 ## Usage
 
-1. Open KOReader's File Manager and navigate to the folder you want to protect.
-2. Open the menu, go to **Folder Lock** and select **Lock current folder**.
+### Locking/Unlocking a folder
 
-   ![Folder Lock menu entrypoint](docs/screenshots/menu-entrypoint.png)
-
-3. Enter a password, then confirm it.
-
-   ![Lock button](docs/screenshots/lock-folder-btn.png)
-   ![Password entry](docs/screenshots/lock-folder-action.png)
-   ![Password confirmation](docs/screenshots/password-confirmation.png)
-
-4. Try opening the locked folder — a password prompt will appear. Enter the correct password to proceed.
-
-   ![Unlock prompt](docs/screenshots/unlock.png)
-
-5. To remove the lock permanently, go to **Folder Lock** > **Unlock current folder** and enter your current password.
-
-   ![Permanent unlock](docs/screenshots/unlock-permanent.png)
-
-### Locking/Unlocking via long-press
-
-As a faster alternative, you can lock or unlock a folder directly from the long-press menu:
+Lock or unlock a folder directly from FileManager's long-press menu:
 
 1. In FileManager, long-press a folder.
-2. Tap **Lock folder** (if the folder is unlocked) or **Unlock folder** (if the folder is locked).
+2. Tap **Lock folder** (if the folder is unlocked) or **Remove Lock** (if the folder is locked).
 
    ![Long-press lock](docs/screenshots/long-press-lock-folder.png)
    ![Long-press unlock](docs/screenshots/long-press-unlock-folder.png)
 
 3. Enter your password and confirm (lock) or enter your password (unlock).
 
-If a parent folder is locked, no lock/unlock button appears — the lock is inherited.
+Parent locks cascade to subfolders automatically. To open a subfolder of a locked parent, enter the parent's password; the subfolder itself is not locked unless you lock it separately.
 
 ### Accessing locked files from History, Collections, or Search
 
@@ -95,6 +74,11 @@ Books inside a locked folder remain protected even when they appear in other pla
 4. The book opens after the password is accepted.
 
 If you cancel the password prompt, the book does not open.
+
+## Upcoming Features
+
+1. Manage all folder locks from the main Folder Lock menu
+2. Integration with other KOReader plugins
 
 ## License
 

@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0-alpha] - 2026-07-02
+
+### Changed
+
+- Major simplification: core folder-lock logic consolidated from scattered `lib/` modules into `main.lua`; only `util/folderlock_hasher`, `util/folderlock_updater`, and `util/folderlock_version` remain as helpers
+- Long-press menu labels simplified: unlocked folder → **Lock folder**, locked folder → **Remove Lock**
+- Lock/unlock flow is now available only through the long-press context menu; the main Folder Lock menu shows About and updater/version entries
+
+### Removed
+
+- **Cover Cache Isolation** feature and `lib/folderlock_cache_isolation` module
+- `folderlock_guard` module; folder navigation and file-open interception now live directly in `main.lua`
+- Main-menu **Lock current folder** / **Unlock current folder** entries
+
+### Fixed
+
+- Updated unit and end-to-end tests to match the simplified architecture
+
 ## [0.4.0-alpha] - 2026-06-30
 
 ### Added
@@ -101,6 +119,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Set `LD_LIBRARY_PATH` for cmake SDL3 try_run in CI
 
+[0.5.0-alpha]: https://github.com/William9923/folderlock.koplugin/releases/tag/0.5.0-alpha
 [0.4.0-alpha]: https://github.com/William9923/folderlock.koplugin/releases/tag/0.4.0-alpha
 [0.2.1]: https://github.com/William9923/folderlock.koplugin/releases/tag/0.2.1
 [0.2.0]: https://github.com/William9923/folderlock.koplugin/releases/tag/0.2.0
