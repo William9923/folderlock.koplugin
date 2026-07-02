@@ -8,9 +8,11 @@ local ffiUtil = require("ffi/util")
 local util = require("util")
 local Device = require("device")
 local lfs = require("libs/libkoreader-lfs")
+local _ = require("gettext")
 
 local NetworkMgr = require("ui/network/manager")
-
+local UIManager = require("ui/uimanager")
+local InfoMessage = require("ui/widget/infomessage")
 local FolderLockVersion = require("lib/folderlock_version")
 
 local REPO = "William9923/folderlock.koplugin"
@@ -330,6 +332,23 @@ function FolderLockUpdater.recover_or_cleanup()
 	end
 
 	return true
+end
+
+function FolderLockUpdater.addSubMenu()
+	return {
+		{
+			text_func = function()
+				return _("Version: ") .. FolderLockUpdater.get_current_version()
+			end,
+			callback = function()
+				UIManager:show(InfoMessage:new({
+					text = _("Folder Lock ") .. FolderLockUpdater.get_current_version(),
+					timeout = 3,
+				}))
+			end,
+		},
+    -- add installation menu
+	}
 end
 
 return FolderLockUpdater

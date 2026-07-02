@@ -14,6 +14,8 @@ local FileManager = require("apps/filemanager/filemanager")
 local FileManagerUtil = require("apps/filemanager/filemanagerutil")
 local _ = require("gettext")
 
+local FolderLockUpdater = require("lib/folderlock_updater")
+
 local _is_filechooser_patched = false
 local _is_filemanagerutil_patched = false
 
@@ -79,7 +81,10 @@ function FolderLock:getSubMenuItems()
 				}))
 			end,
 		},
+    -- TODO: setup menu
+
 		-- Version submenu
+		table.unpack(FolderLockUpdater.addSubMenu()),
 	}
 end
 
@@ -115,8 +120,8 @@ end
 return FolderLock
 
 -- TODO:
--- 1. Interaction is on Long Press folder only (to lock and unlock) -> unlock options should remain on the affected folder
+-- 1. Interaction is on Long Press folder only (to lock and unlock) -> unlock options should remain on the affected folder => DONE
 -- 2. Lock should be applied simply on onPreOpenFile or onPreOpenFile events
+-- OPTIONAL:
 -- 3. Learn how does open next or previous documents work. And OpenLastDocument. it seems cannot be catched with our current patch
 -- 4. Learn about module/menu in lua if possible. But if cannot then it's fine as it is. Reuse the versioning capabilities
--- 5,
