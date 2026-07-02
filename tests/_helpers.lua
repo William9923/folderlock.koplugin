@@ -148,14 +148,4 @@ function M.install_stubs(opts)
     return state
 end
 
-function M.load_core(opts)
-    local state = M.install_stubs(opts)
-
-    package.path = "./folderlock.koplugin/?.lua;" .. package.path
-    package.loaded["lib/folderlock_core"] = nil
-
-    local core = require("lib/folderlock_core")
-    return core, state
-end
-
 return M
