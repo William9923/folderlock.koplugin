@@ -30,10 +30,9 @@ local FolderLock = WidgetContainer:extend({
 	registry = nil,
 })
 
--- Core logic
-
 function FolderLock:init()
-	-- self.loadLocksRegistry(self)
+  self.hasher = FolderLockHasher
+	self.loadLocksRegistry(self)
 
 	self.ui.menu:registerToMainMenu(self)
 	self.patchFileChooser(self)
@@ -42,6 +41,7 @@ function FolderLock:init()
 	self.registerFileDialogMenu(self)
 end
 
+-- Core logic
 function FolderLock:loadLocksRegistry()
 	self.settings = LuaSettings:open(self.settings_file)
 	self.registry = self.settings:readSetting(_registry_name) or {}
@@ -51,6 +51,60 @@ function FolderLock:saveLocksRegistry()
 	self.settings:saveSetting(_registry_name, self.registry)
 	self.settings:flush()
 end
+
+-- Generate path ancestor given real path, sorted from the deepest path
+-- Input: normalized absolute path that start with root ("/") and not ending in last folder name without additional "/" suffix
+--
+-- Example:
+--  - /a/b/c: {"/a/b/c", "/a/b", "/a", "/"}
+--  - /a/b: {"/a/b", "/a", "/"}
+local function generate_path_ancestors(path)
+	local ancestors = {}
+	if not path or path == "" then
+		return ancestors
+	end
+
+	while path ~= "/" and path ~= "" do
+		table.insert(ancestors, path)
+		local parent = path:match("^(.*)/[^/]+$")
+		if parent == path or not parent then
+			break
+		end
+		path = parent
+	end
+
+	if path == "/" or (#ancestors > 0 and ancestors[#ancestors] ~= "/") then
+		table.insert(ancestors, "/")
+	end
+
+	return ancestors
+end
+
+-- Check if a lock exist in the folder for a path (file or folder)
+-- Return the deepest locked folder absolute path
+function FolderLock:checkFolderLock(path)
+	local normalized = self.hasher.normalize(path)
+	if not normalized then
+		return nil
+	end
+
+	local ancestors = generate_path_ancestors(normalized)
+	for _, ancestor_path in ipairs(ancestors) do
+		if self.registry[ancestor_path] then
+			return ancestor_path
+		end
+	end
+
+	return nil
+end
+
+-- Retrieve key for unlocking the locked folder
+function FolderLock:retrieveLockedFolderKey(locked_folder_path)
+	return self.registry[locked_folder_path]
+end
+
+-- remove lock
+-- add new lock
 
 -- Patching FileChooser.changeToPath
 function FolderLock:patchFileChooser()
@@ -63,6 +117,10 @@ function FolderLock:patchFileChooser()
 
 		FileChooser.changeToPath = function(self_fc, path, focused_path)
 			print("[FOLDERLOCK] onPrePathChanged event", path, focused_path)
+			-- TODO: check dialog
+			local real_path = self.hasher.normalize(path)
+			local locked_path = self:checkFolderLock(real_path)
+			print("[FOLDERLOCK] folder is on locked folder", locked_path)
 			orig_changeToPath(self_fc, path, focused_path)
 		end
 
@@ -82,6 +140,11 @@ function FolderLock:patchFileManagerUtil()
 		FileManagerUtil.openFile = function(ui, file, caller_pre_callback, no_dialog)
 			local path, filename = util.splitFilePathName(file)
 			print("[FOLDERLOCK] onPreOpenFile event", path, filename)
+			local real_path = self.hasher.normalize(path)
+			local locked_path = self:checkFolderLock(real_path)
+			print("[FOLDERLOCK] file is on locked folder", locked_path)
+
+			-- TODO: check dialog
 			orig_openFile(ui, file, caller_pre_callback, no_dialog)
 		end
 
@@ -118,6 +181,7 @@ function FolderLock:registerFileDialogMenu()
 				text = _("Lock folder"),
 				callback = function()
 					print("[FOLDERLOCK] Lock Folder event clicked")
+					-- TODO: add lock dialog
 				end,
 			},
 		}

@@ -17,7 +17,7 @@ local function normalize_path(path)
 end
 local FolderLockHasher = {
 	hash = djb2_hash,
-	normalizer = normalize_path,
+	normalize = normalize_path,
 }
 
 return FolderLockHasher
