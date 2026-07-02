@@ -1,5 +1,5 @@
 local FolderLockVersion = {
-    VERSION = "dev",
+	VERSION = "dev", -- for local development purposes
 }
 
 return FolderLockVersion

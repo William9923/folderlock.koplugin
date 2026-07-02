@@ -1,4 +1,21 @@
-local FolderLockVersion = require("lib/folderlock_version")
+local http = require("socket.http")
+local ltn12 = require("ltn12")
+local socket = require("socket")
+local socketutil = require("socketutil")
+local JSON = require("json")
+local sha2 = require("ffi/sha2")
+local ffiUtil = require("ffi/util")
+local util = require("util")
+local Device = require("device")
+local lfs = require("libs/libkoreader-lfs")
+local _ = require("gettext")
+
+local NetworkMgr = require("ui/network/manager")
+local UIManager = require("ui/uimanager")
+local ConfirmBox = require("ui/widget/confirmbox")
+local Trapper = require("ui/trapper")
+local InfoMessage = require("ui/widget/infomessage")
+local FolderLockVersion = require("util/folderlock_version")
 
 local REPO = "William9923/folderlock.koplugin"
 local DEFAULT_LATEST_RELEASE_URL = "https://api.github.com/repos/" .. REPO .. "/releases/latest"
@@ -69,17 +86,9 @@ local function find_asset(assets, name_pattern)
 end
 
 function FolderLockUpdater.check()
-	local NetworkMgr = require("ui/network/manager")
 	if not NetworkMgr:isConnected() then
 		return nil, "Cannot check for updates while offline"
 	end
-
-	local http = require("socket.http")
-	local ltn12 = require("ltn12")
-	local socket = require("socket")
-	local socketutil = require("socketutil")
-	local JSON = require("json")
-	local logger = require("logger")
 
 	local response_body = {}
 	socketutil:set_timeout(socketutil.LARGE_BLOCK_TIMEOUT, socketutil.LARGE_TOTAL_TIMEOUT)
@@ -107,7 +116,6 @@ function FolderLockUpdater.check()
 	end
 
 	if code ~= 200 then
-		logger.dbg("FolderLock: update check failed, code=" .. tostring(code) .. ", status=" .. tostring(status))
 		return nil, "Failed to check for updates (HTTP " .. tostring(code) .. ")"
 	end
 
@@ -156,12 +164,6 @@ end
 
 -- Download a file from url to dest_path. Returns true on success, nil+err on failure.
 local function download_file(url, dest_path)
-	local http = require("socket.http")
-	local ltn12 = require("ltn12")
-	local socket = require("socket")
-	local socketutil = require("socketutil")
-	local logger = require("logger")
-
 	socketutil:set_timeout(socketutil.FILE_BLOCK_TIMEOUT, socketutil.FILE_TOTAL_TIMEOUT)
 	local code, _, _ = socket.skip(
 		1,
@@ -176,7 +178,6 @@ local function download_file(url, dest_path)
 	socketutil:reset_timeout()
 
 	if code ~= 200 then
-		logger.dbg("FolderLock: download failed, url=" .. url .. ", code=" .. tostring(code))
 		os.remove(dest_path)
 		return nil, "Download failed (HTTP " .. tostring(code) .. ")"
 	end
@@ -185,7 +186,6 @@ end
 
 -- Compute SHA256 hex digest of a file.
 local function file_sha256(filepath)
-	local sha2 = require("ffi/sha2")
 	local file, err = io.open(filepath, "rb")
 	if not file then
 		return nil, err
@@ -195,13 +195,13 @@ local function file_sha256(filepath)
 	return sha2.sha256(content)
 end
 
+-- Install new version of folder lock
+-- will check if sha256 of the plugin is correct from the source
 function FolderLockUpdater.install(version, zip_url, sha256_url)
-	local logger = require("logger")
 	local tmp = os.tmpname()
 	local tmp_sha
 	local ok, err
 
-	logger.dbg("FolderLock: downloading update zip from", zip_url)
 	ok, err = download_file(zip_url, tmp)
 	if not ok then
 		return nil, err
@@ -244,11 +244,8 @@ function FolderLockUpdater.install(version, zip_url, sha256_url)
 			return nil, "Checksum mismatch: expected " .. expected_hash .. ", got " .. computed_hash
 		end
 
-		logger.dbg("FolderLock: checksum verified OK")
 		os.remove(tmp_sha)
 	end
-
-	logger.dbg("FolderLock: checksum verified, extracting update")
 
 	local plugin_dir = FolderLockUpdater._plugin_dir
 	if not plugin_dir then
@@ -256,14 +253,8 @@ function FolderLockUpdater.install(version, zip_url, sha256_url)
 		return nil, "Plugin directory not set"
 	end
 
-	local ffiUtil = require("ffi/util")
-	local util = require("util")
-	local Device = require("device")
-
 	local plugin_dir_new = plugin_dir .. ".new"
 	local plugin_dir_bak = plugin_dir .. ".bak"
-
-	local lfs = require("libs/libkoreader-lfs")
 
 	-- Clean up any stale .new from a previous aborted install
 	local attr_new = lfs.attributes(plugin_dir_new)
@@ -304,18 +295,18 @@ function FolderLockUpdater.install(version, zip_url, sha256_url)
 		return nil, "Failed to install update: " .. tostring(swap_err)
 	end
 
-	logger.dbg("FolderLock: update installed successfully")
 	return true
 end
 
+-- recover_or_cleanup will:
+-- 1. recover old .bak plugin (previous version) if installation for new version failed
+-- 2. cleanup old .bak plugin (previous version) if installation successful
 function FolderLockUpdater.recover_or_cleanup()
 	local plugin_dir = FolderLockUpdater._plugin_dir
 	if not plugin_dir then
 		return true
 	end
 
-	local lfs = require("libs/libkoreader-lfs")
-	local ffiUtil = require("ffi/util")
 	local plugin_dir_bak = plugin_dir .. ".bak"
 	local plugin_dir_new = plugin_dir .. ".new"
 
@@ -343,6 +334,69 @@ function FolderLockUpdater.recover_or_cleanup()
 	end
 
 	return true
+end
+
+function FolderLockUpdater.addSubMenu()
+	return {
+		{
+			text_func = function()
+				return _("Version: ") .. FolderLockUpdater.get_current_version()
+			end,
+			callback = function()
+				UIManager:show(InfoMessage:new({
+					text = _("Folder Lock ") .. FolderLockUpdater.get_current_version(),
+					timeout = 3,
+				}))
+			end,
+		},
+		{
+			text = _("Check for updates"),
+			callback = function()
+				UIManager:show(ConfirmBox:new({
+					text = _("Check for Folder Lock updates?"),
+					ok_text = _("Check"),
+					ok_callback = function()
+						Trapper:wrap(function()
+							local result, err = FolderLockUpdater.check()
+							if not result then
+								UIManager:show(InfoMessage:new({
+									text = _("Update check failed: ") .. err,
+								}))
+								return
+							end
+							if not result.available then
+								UIManager:show(InfoMessage:new({
+									text = _("You're running the latest version (") .. result.current_version .. _(
+										")."
+									),
+									timeout = 3,
+								}))
+								return
+							end
+							UIManager:show(ConfirmBox:new({
+								text = _("Update ") .. result.latest_version .. _(" is available. Install?"),
+								ok_text = _("Install"),
+								ok_callback = function()
+									local install_ok, install_err = FolderLockUpdater.install(
+										result.latest_version,
+										result.zip_url,
+										result.sha256_url
+									)
+									if install_err then
+										UIManager:show(InfoMessage:new({
+											text = _("Install failed: ") .. install_err,
+										}))
+										return
+									end
+									UIManager:askForRestart(_("Update installed. Please restart KOReader."))
+								end,
+							}))
+						end)
+					end,
+				}))
+			end,
+		},
+	}
 end
 
 return FolderLockUpdater

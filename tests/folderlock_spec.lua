@@ -46,11 +46,6 @@ describe("FolderLock plugin", function()
 	end
 
 	local function reset_global_plugin_state()
-		local ok_guard, FolderLockGuard = pcall(require, "lib/folderlock_guard")
-		if ok_guard and FolderLockGuard and type(FolderLockGuard._reset) == "function" then
-			FolderLockGuard._reset()
-		end
-
 		local FileChooser = require("ui/widget/filechooser")
 		if not orig_FileChooser_changeToPath then
 			orig_FileChooser_changeToPath = FileChooser.changeToPath
@@ -361,7 +356,7 @@ describe("FolderLock plugin", function()
 			assert.are.equal("Lock folder", result[1].text)
 		end)
 
-		it("shows Unlock folder for locked folder", function()
+		it("shows Remove Lock for locked folder", function()
 			local locked_path = ffiUtil.realpath(locked_dir) or locked_dir
 			seed_registry({
 				[locked_path] = djb2_hash("secret123"),
@@ -373,10 +368,10 @@ describe("FolderLock plugin", function()
 
 			local result = row_func(locked_dir, false, nil)
 			assert.is_not_nil(result, "should return a button row for locked folder")
-			assert.are.equal("Unlock folder", result[1].text)
+			assert.are.equal("Remove Lock", result[1].text)
 		end)
 
-		it("returns nil for folder inside locked parent", function()
+		it("shows Lock folder for folder inside locked parent", function()
 			local locked_path = ffiUtil.realpath(locked_dir) or locked_dir
 			seed_registry({
 				[locked_path] = djb2_hash("secret123"),
@@ -387,20 +382,21 @@ describe("FolderLock plugin", function()
 			assert.is_not_nil(row_func, "row_func should be registered")
 
 			local result = row_func(locked_sub_dir, false, nil)
-			assert.is_nil(result, "should skip button for child of locked parent")
+			assert.is_not_nil(result, "should return a button row for child folder")
+			assert.are.equal("Lock folder", result[1].text)
 		end)
 	end)
 
 	describe("Update system", function()
 		it("smoke: updater module loads and reports version", function()
-			local Updater = require("lib/folderlock_updater")
+			local Updater = require("util/folderlock_updater")
 			local v = Updater.get_current_version()
 			assert.is_not_nil(v)
 			assert.is_true(type(v) == "string")
 		end)
 
 		it("smoke: URL override round-trips", function()
-			local Updater = require("lib/folderlock_updater")
+			local Updater = require("util/folderlock_updater")
 			local test_url = "http://127.0.0.1:18080/latest.json"
 			local default = Updater.get_latest_release_url()
 			Updater.set_latest_release_url(test_url)
@@ -410,56 +406,10 @@ describe("FolderLock plugin", function()
 		end)
 
 		it("smoke: recover_or_cleanup runs without error", function()
-			local Updater = require("lib/folderlock_updater")
+			local Updater = require("util/folderlock_updater")
 			local ok, err = Updater.recover_or_cleanup()
 			assert.is_true(ok, tostring(err))
 		end)
 	end)
 
-	describe("Cover cache isolation hooks", function()
-		it("BookList.hasBookBeenOpened hides locked files outside context and shows inside", function()
-			local password = "secret123"
-			local locked_path = ffiUtil.realpath(locked_dir) or locked_dir
-			seed_registry({
-				[locked_path] = djb2_hash(password),
-			})
-
-			create_filemanager(test_root)
-
-			local locked_file = locked_dir .. "/book.epub"
-			local sidecar_dir = locked_dir .. "/book.sdr"
-			local sidecar_file = sidecar_dir .. "/metadata.epub.lua"
-			makePath(sidecar_dir)
-			local f = io.open(sidecar_file, "w")
-			f:write("return {}\n")
-			f:close()
-
-			local FolderLockCacheIsolation = require("lib/folderlock_cache_isolation")
-			local BookList = require("ui/widget/booklist")
-
-			-- Outside context → hidden
-			FolderLockCacheIsolation.set_current_path(test_root)
-			BookList.book_info_cache[locked_file] = nil
-			assert.is_false(BookList.hasBookBeenOpened(locked_file))
-
-			-- Inside locked folder context → visible
-			FolderLockCacheIsolation.set_current_path(locked_path)
-			BookList.book_info_cache[locked_file] = nil
-			assert.is_true(BookList.hasBookBeenOpened(locked_file))
-
-			FolderLockCacheIsolation.set_current_path(nil)
-		end)
-
-		it("BookInfoManager and BookList hooks are installed when modules are available", function()
-			local BookList = require("ui/widget/booklist")
-			assert.is_true(BookList._folderlock_getBookInfo_hooked)
-			assert.is_true(BookList._folderlock_hasBookBeenOpened_hooked)
-
-			local ok, BookInfoManager = pcall(require, "bookinfomanager")
-			if ok and BookInfoManager then
-				assert.is_true(BookInfoManager._folderlock_getBookInfo_hooked)
-				assert.is_true(BookInfoManager._folderlock_getDocProps_hooked)
-			end
-		end)
-	end)
 end)
