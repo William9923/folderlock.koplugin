@@ -10,6 +10,7 @@ local UIManager = require("ui/uimanager")
 local WidgetContainer = require("ui/widget/container/widgetcontainer")
 local DataStorage = require("datastorage")
 local FileChooser = require("ui/widget/filechooser")
+local FileManager = require("apps/filemanager/filemanager")
 local FileManagerUtil = require("apps/filemanager/filemanagerutil")
 local _ = require("gettext")
 
@@ -26,6 +27,8 @@ function FolderLock:init()
 	self.ui.menu:registerToMainMenu(self)
 	self.patchFileChooser(self)
 	self.patchFileManagerUtil(self)
+
+	self.registerFileDialogMenu(self)
 end
 
 -- Patching FileChooser.changeToPath
@@ -76,8 +79,25 @@ function FolderLock:getSubMenuItems()
 				}))
 			end,
 		},
-    -- Version submenu
+		-- Version submenu
 	}
+end
+
+function FolderLock:registerFileDialogMenu()
+	FileManager.addFileDialogButtons(self.ui, "folderlock", function(file, is_file)
+		if is_file then
+			return nil
+		end
+
+		return {
+			{
+				text = _("Lock folder"),
+				callback = function()
+					print("[FOLDERLOCK] Lock Folder event clicked")
+				end,
+			},
+		}
+	end)
 end
 
 function FolderLock:addToMainMenu(menu_items)
